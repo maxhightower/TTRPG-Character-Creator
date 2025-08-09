@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
-import Builder, { AppState as BuilderState } from './Builder'
-import { NodeOptimizer } from './NodeOptimizer'
-import ProgressionPlanner from './ProgressionPlanner'
+import Builder, { AppState as BuilderState } from './Builder.tsx'
+import { NodeOptimizer } from './NodeOptimizer.tsx'
+import ProgressionPlanner from './ProgressionPlanner.tsx'
 
 export function App() {
   const [tab, setTab] = useState<'builder' | 'planner' | 'optimizer'>('builder')
