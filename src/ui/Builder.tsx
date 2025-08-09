@@ -40,7 +40,9 @@ type Equipment =
 
 const RACES: Race[] = [
   { id: 'human', name: 'Human (Base)', asis: { str: 1, dex: 1, con: 1, int: 1, wis: 1, cha: 1 }, speed: 30, traits: [ { id: 'versatile', name: 'Versatile', text: '+1 to all ability scores.' } ] },
-  { id: 'elf', name: 'Elf (Wood)', asis: { dex: 2, wis: 1 }, speed: 35, traits: [ { id: 'darkvision', name: 'Darkvision', text: 'See in dim light 60 ft.' }, { id: 'keen', name: 'Keen Senses', text: 'Proficiency in Perception.' } ] },
+  { id: 'human-variant', name: 'Human (Variant)', asis: { str: 1, dex: 1 }, speed: 30, traits: [ { id: 'adaptable', name: 'Adaptable', text: '+1 to two ability scores (demo variant).' } ] },
+  { id: 'elf-wood', name: 'Elf (Wood)', asis: { dex: 2, wis: 1 }, speed: 35, traits: [ { id: 'darkvision', name: 'Darkvision', text: 'See in dim light 60 ft.' }, { id: 'keen', name: 'Keen Senses', text: 'Proficiency in Perception.' } ] },
+  { id: 'elf-high', name: 'Elf (High)', asis: { dex: 2, int: 1 }, speed: 30, traits: [ { id: 'darkvision', name: 'Darkvision', text: 'See in dim light 60 ft.' }, { id: 'keen', name: 'Keen Senses', text: 'Proficiency in Perception.' } ] },
 ]
 
 const CLASSES: Klass[] = [
@@ -96,19 +98,95 @@ const CLASSES: Klass[] = [
 ]
 
 const EQUIPMENT: Equipment[] = [
+  // Weapons
   { id: 'greataxe', name: 'Greataxe', type: 'weapon', group: 'martial', hands: 2, dmg: '1d12 slashing', tags: ['weapon', 'heavy', 'two‑handed'], grants: ['Melee Attack (Greataxe)'] },
-  { id: 'shield', name: 'Shield', type: 'shield', ac: 2, hands: 1, tags: ['shield'], grants: ['Raise Shield'] },
-  { id: 'leather', name: 'Leather Armor', type: 'armor', ac: 11, dexMax: Number.POSITIVE_INFINITY, tags: ['armor', 'light'] },
-  { id: 'breastplate', name: 'Breastplate', type: 'armor', ac: 14, dexMax: 2, tags: ['armor', 'medium'] },
-  { id: 'chain', name: 'Chain Mail', type: 'armor', ac: 16, dexMax: 0, reqStr: 13, tags: ['armor', 'heavy'] },
+  { id: 'greatsword', name: 'Greatsword', type: 'weapon', group: 'martial', hands: 2, dmg: '2d6 slashing', tags: ['weapon', 'heavy', 'two‑handed'], grants: ['Melee Attack (Greatsword)'] },
+  { id: 'longsword', name: 'Longsword', type: 'weapon', group: 'martial', hands: 1, dmg: '1d8 slashing', tags: ['weapon', 'versatile'], grants: ['Melee Attack (Longsword)'] },
+  { id: 'rapier', name: 'Rapier', type: 'weapon', group: 'martial', hands: 1, dmg: '1d8 piercing', tags: ['weapon', 'finesse'], grants: ['Melee Attack (Rapier)'] },
+  { id: 'shortsword', name: 'Shortsword', type: 'weapon', group: 'martial', hands: 1, dmg: '1d6 piercing', tags: ['weapon', 'finesse', 'light'], grants: ['Melee Attack (Shortsword)'] },
+  { id: 'warhammer', name: 'Warhammer', type: 'weapon', group: 'martial', hands: 1, dmg: '1d8 bludgeoning', tags: ['weapon', 'versatile'], grants: ['Melee Attack (Warhammer)'] },
+  { id: 'mace', name: 'Mace', type: 'weapon', group: 'simple', hands: 1, dmg: '1d6 bludgeoning', tags: ['weapon', 'simple'], grants: ['Melee Attack (Mace)'] },
+  { id: 'handaxe', name: 'Handaxe', type: 'weapon', group: 'simple', hands: 1, dmg: '1d6 slashing', tags: ['weapon', 'simple', 'light', 'thrown'], grants: ['Melee Attack (Handaxe)', 'Ranged Attack (Handaxe)'] },
+  { id: 'dagger', name: 'Dagger', type: 'weapon', group: 'simple', hands: 1, dmg: '1d4 piercing', tags: ['weapon', 'simple', 'light', 'finesse', 'thrown'], grants: ['Melee Attack (Dagger)', 'Ranged Attack (Dagger)'] },
+  { id: 'spear', name: 'Spear', type: 'weapon', group: 'simple', hands: 1, dmg: '1d6 piercing', tags: ['weapon', 'simple', 'thrown', 'versatile'], grants: ['Melee Attack (Spear)', 'Ranged Attack (Spear)'] },
   { id: 'longbow', name: 'Longbow', type: 'weapon', group: 'martial', hands: 2, dmg: '1d8 piercing', tags: ['weapon', 'heavy', 'two‑handed', 'ranged'], grants: ['Ranged Attack (Longbow)'] },
+  { id: 'shortbow', name: 'Shortbow', type: 'weapon', group: 'simple', hands: 2, dmg: '1d6 piercing', tags: ['weapon', 'two‑handed', 'ranged'], grants: ['Ranged Attack (Shortbow)'] },
+  { id: 'light-crossbow', name: 'Light Crossbow', type: 'weapon', group: 'simple', hands: 2, dmg: '1d8 piercing', tags: ['weapon', 'two‑handed', 'ranged', 'loading'], grants: ['Ranged Attack (Light Crossbow)'] },
+  { id: 'heavy-crossbow', name: 'Heavy Crossbow', type: 'weapon', group: 'martial', hands: 2, dmg: '1d10 piercing', tags: ['weapon', 'heavy', 'two‑handed', 'ranged', 'loading'], grants: ['Ranged Attack (Heavy Crossbow)'] },
+
+  // Shields
+  { id: 'shield', name: 'Shield', type: 'shield', ac: 2, hands: 1, tags: ['shield'], grants: ['Raise Shield'] },
+
+  // Light Armor
+  { id: 'padded', name: 'Padded Armor', type: 'armor', ac: 11, dexMax: Number.POSITIVE_INFINITY, tags: ['armor', 'light'] },
+  { id: 'leather', name: 'Leather Armor', type: 'armor', ac: 11, dexMax: Number.POSITIVE_INFINITY, tags: ['armor', 'light'] },
+  { id: 'studded-leather', name: 'Studded Leather', type: 'armor', ac: 12, dexMax: Number.POSITIVE_INFINITY, tags: ['armor', 'light'] },
+
+  // Medium Armor
+  { id: 'scale-mail', name: 'Scale Mail', type: 'armor', ac: 14, dexMax: 2, tags: ['armor', 'medium'] },
+  { id: 'breastplate', name: 'Breastplate', type: 'armor', ac: 14, dexMax: 2, tags: ['armor', 'medium'] },
+  { id: 'half-plate', name: 'Half Plate', type: 'armor', ac: 15, dexMax: 2, tags: ['armor', 'medium'] },
+
+  // Heavy Armor
+  { id: 'chain', name: 'Chain Mail', type: 'armor', ac: 16, dexMax: 0, reqStr: 13, tags: ['armor', 'heavy'] },
+  { id: 'splint', name: 'Splint Armor', type: 'armor', ac: 17, dexMax: 0, reqStr: 15, tags: ['armor', 'heavy'] },
+  { id: 'plate', name: 'Plate Armor', type: 'armor', ac: 18, dexMax: 0, reqStr: 15, tags: ['armor', 'heavy'] },
 ]
 
 const SUBACTIONS_BY_ITEM: Record<string, string[]> = {
   greataxe: ['Melee Attack (Greataxe)'],
+  greatsword: ['Melee Attack (Greatsword)'],
+  longsword: ['Melee Attack (Longsword)'],
+  rapier: ['Melee Attack (Rapier)'],
+  shortsword: ['Melee Attack (Shortsword)'],
+  warhammer: ['Melee Attack (Warhammer)'],
+  mace: ['Melee Attack (Mace)'],
+  handaxe: ['Melee Attack (Handaxe)', 'Ranged Attack (Handaxe)'],
+  dagger: ['Melee Attack (Dagger)', 'Ranged Attack (Dagger)'],
+  spear: ['Melee Attack (Spear)', 'Ranged Attack (Spear)'],
   longbow: ['Ranged Attack (Longbow)'],
+  shortbow: ['Ranged Attack (Shortbow)'],
+  'light-crossbow': ['Ranged Attack (Light Crossbow)'],
+  'heavy-crossbow': ['Ranged Attack (Heavy Crossbow)'],
   shield: ['Raise Shield'],
 }
+
+// Skills (demo)
+const SKILLS: Array<{ id: string; name: string; ability: AbilityKey }> = [
+  { id: 'acrobatics', name: 'Acrobatics', ability: 'dex' },
+  { id: 'animal', name: 'Animal Handling', ability: 'wis' },
+  { id: 'arcana', name: 'Arcana', ability: 'int' },
+  { id: 'athletics', name: 'Athletics', ability: 'str' },
+  { id: 'deception', name: 'Deception', ability: 'cha' },
+  { id: 'history', name: 'History', ability: 'int' },
+  { id: 'insight', name: 'Insight', ability: 'wis' },
+  { id: 'intimidation', name: 'Intimidation', ability: 'cha' },
+  { id: 'investigation', name: 'Investigation', ability: 'int' },
+  { id: 'medicine', name: 'Medicine', ability: 'wis' },
+  { id: 'nature', name: 'Nature', ability: 'int' },
+  { id: 'perception', name: 'Perception', ability: 'wis' },
+  { id: 'performance', name: 'Performance', ability: 'cha' },
+  { id: 'persuasion', name: 'Persuasion', ability: 'cha' },
+  { id: 'religion', name: 'Religion', ability: 'int' },
+  { id: 'sleight', name: 'Sleight of Hand', ability: 'dex' },
+  { id: 'stealth', name: 'Stealth', ability: 'dex' },
+  { id: 'survival', name: 'Survival', ability: 'wis' },
+]
+
+// Backgrounds (demo)
+type Background = {
+  id: string
+  name: string
+  skills?: string[]
+  tools?: string[]
+  languages?: number
+  feature?: { name: string; text: string }
+}
+const BACKGROUNDS: Background[] = [
+  { id: 'soldier', name: 'Soldier', skills: ['athletics', 'intimidation'], tools: ['gaming set', 'vehicles (land)'], feature: { name: 'Military Rank', text: 'You have a military rank and can exert influence.' } },
+  { id: 'acolyte', name: 'Acolyte', skills: ['insight', 'religion'], languages: 2, feature: { name: 'Shelter of the Faithful', text: 'You command respect from those who share your faith.' } },
+  { id: 'criminal', name: 'Criminal', skills: ['deception', 'stealth'], tools: ['thieves’ tools', 'gaming set'], feature: { name: 'Criminal Contact', text: 'You have a reliable and trustworthy contact.' } },
+]
 
 // ---------------- Utilities ----------------
 
@@ -295,6 +373,7 @@ export type AppState = {
   classes: Array<{ klass: Klass; level: number; subclass?: Subclass }>
   abilities: Record<AbilityKey, number>
   loadout: Equipment[]
+  background?: Background
 }
 
 // ---------------- Main Component ----------------
@@ -308,6 +387,12 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
   ])
   const [abilities, setAbilities] = useState<Record<AbilityKey, number>>({ str: 15, dex: 14, con: 14, int: 10, wis: 10, cha: 8 })
   const [loadout, setLoadout] = useState<Equipment[]>([EQUIPMENT[0], EQUIPMENT[1]]) // greataxe + shield
+  // Background selection
+  const [background, setBackground] = useState<Background | undefined>(BACKGROUNDS[0])
+  // Skills proficiency & sorting state
+  type ProfType = 'none' | 'half' | 'prof' | 'expert'
+  const [skillProf, setSkillProf] = useState<Record<string, ProfType>>({})
+  const [skillSort, setSkillSort] = useState<'ability' | 'alpha' | 'bonus' | 'proftype'>('ability')
   const [history, setHistory] = useState<string[]>([])
   const [future, setFuture] = useState<string[]>([])
   // Catalog search/filter state
@@ -326,16 +411,29 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
   }, [catalogQuery, catalogTags])
   const toggleTag = (tag: string) => setCatalogTags((prev) => (prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]))
 
-  const state: AppState = { name, race, classes, abilities, loadout }
+  const state: AppState = { name, race, classes, abilities, loadout, background }
   const derived = useMemo(() => computeDerived(state), [state])
   const issues = useMemo(() => validateChoice(state), [state])
   const sim = useMemo(() => simulateReadiness(state), [state])
+
+  // Detect pending class feature decisions (e.g., subclass unlocked but not chosen)
+  const pendingSubclassChoices = useMemo(() => {
+    return classes.filter((c) => {
+      const subs = c.klass.subclasses || []
+      if (!subs.length) return false
+      const available = subs.filter((s) => c.level >= s.unlockLevel)
+      return available.length > 0 && !c.subclass
+    })
+  }, [classes])
+  function setSubclassChoice(klassId: string, s: Subclass) {
+    setClasses((cs) => cs.map((c) => (c.klass.id === klassId ? { ...c, subclass: s } : c)))
+  }
 
   // Notify parent when character changes
   useEffect(() => {
     props.onCharacterChange?.(state, derived)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [name, race, JSON.stringify(classes), JSON.stringify(abilities), JSON.stringify(loadout), derived])
+  }, [name, race, JSON.stringify(classes), JSON.stringify(abilities), JSON.stringify(loadout), JSON.stringify(background), derived])
 
   function snapshot() {
     setHistory((h) => [...h, JSON.stringify(state)])
@@ -384,16 +482,29 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
           <Card>
             <CardHeader><CardTitle><Info size={16} style={{ marginRight: 6 }} />Basics</CardTitle></CardHeader>
             <CardContent>
-              <div style={{ display: 'grid', gap: 12, gridTemplateColumns: '1fr 1fr' }}>
+              <div style={{ display: 'grid', gap: 12, gridTemplateColumns: '2fr 1fr 1fr' }}>
+                {/* Character Name (col 1) */}
                 <Labeled label="Character Name">
                   <input value={name} onChange={(e) => setName(e.target.value)} style={inp} />
                 </Labeled>
 
+                {/* Race (col 2) */}
                 <Labeled label="Race">
-                  <Selector options={RACES} value={race} onChange={setRace} getLabel={(r) => r.name} />
+                  <RaceSelector value={race} onChange={setRace} />
                 </Labeled>
 
-                {/* Classes & Level manager */}
+                {/* Background (col 3) */}
+                <Labeled label="Background">
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                    {BACKGROUNDS.map((bg) => (
+                      <Button key={bg.id} size="sm" variant={background?.id === bg.id ? 'default' : 'outline'} onClick={() => setBackground(bg)}>
+                        {bg.name}
+                      </Button>
+                    ))}
+                  </div>
+                </Labeled>
+
+                {/* Classes & Level manager (full width) */}
                 <div style={{ gridColumn: '1 / -1' }}>
                   <ClassManager
                     classes={classes}
@@ -403,6 +514,87 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
 
                 <AbilityEditor abilities={abilities} onChange={setAbilities} race={race} />
               </div>
+            </CardContent>
+          </Card>
+
+          {/* Class Feature Choices (appears only when needed) */}
+          {pendingSubclassChoices.length ? (
+            <Card>
+              <CardHeader><CardTitle><Sparkles size={16} style={{ marginRight: 6 }} />Class Feature Choices</CardTitle></CardHeader>
+              <CardContent>
+                <div style={{ fontSize: 12, color: '#64748b' }}>You have class choices to make.</div>
+                <div style={{ display: 'grid', gap: 8, marginTop: 8 }}>
+                  {pendingSubclassChoices.map((c) => (
+                    <div key={c.klass.id} style={{ padding: 8, borderRadius: 10, border: '1px solid #e2e8f0', background: '#f8fafc', display: 'grid', gap: 8 }}>
+                      <div style={{ fontWeight: 600 }}>{c.klass.name}: Choose a Subclass</div>
+                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                        {(c.klass.subclasses || []).filter((s) => c.level >= s.unlockLevel).map((s) => (
+                          <Button key={s.id} size="sm" variant={c.subclass?.id === s.id ? 'default' : 'outline'} onClick={() => setSubclassChoice(c.klass.id, s)}>{s.name}</Button>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          ) : null}
+
+          {/* Skills */}
+          <Card>
+            <CardHeader><CardTitle><Info size={16} style={{ marginRight: 6 }} />Skills</CardTitle></CardHeader>
+            <CardContent>
+              {/* Sort controls */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                <div style={{ fontSize: 12, color: '#64748b' }}>Sort By</div>
+                <select value={skillSort} onChange={(e) => setSkillSort(e.target.value as any)} style={{ ...inp, width: 240, padding: '6px 10px' }}>
+                  <option value="ability">Ability Score (STR, DEX, ...)</option>
+                  <option value="alpha">Alphabetical</option>
+                  <option value="bonus">Highest Bonus</option>
+                  <option value="proftype">Proficiency Type</option>
+                </select>
+              </div>
+
+              {(() => {
+                const fa = finalAbility(abilities, race)
+                const pb = proficiencyBonus(derived.totalLevel)
+                const abilityOrder: AbilityKey[] = ['str', 'dex', 'con', 'int', 'wis', 'cha']
+                const profOrder: ProfType[] = ['none', 'half', 'prof', 'expert']
+                const nextProf = (t?: ProfType): ProfType => (t === 'none' ? 'half' : t === 'half' ? 'prof' : t === 'prof' ? 'expert' : 'none')
+                const items = SKILLS.map((s) => {
+                  const base = mod(fa[s.ability])
+                  const t: ProfType = skillProf[s.id] ?? 'none'
+                  const add = t === 'half' ? Math.floor(pb / 2) : t === 'prof' ? pb : t === 'expert' ? pb * 2 : 0
+                  const total = base + add
+                  return { ...s, base, add, total, t }
+                })
+                items.sort((a, b) => {
+                  if (skillSort === 'alpha') return a.name.localeCompare(b.name)
+                  if (skillSort === 'bonus') return b.total - a.total || a.name.localeCompare(b.name)
+                  if (skillSort === 'proftype') return profOrder.indexOf(a.t) - profOrder.indexOf(b.t) || a.name.localeCompare(b.name)
+                  // ability
+                  return abilityOrder.indexOf(a.ability) - abilityOrder.indexOf(b.ability) || a.name.localeCompare(b.name)
+                })
+                return (
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                    {items.map((s) => (
+                      <div key={s.id} style={{ padding: 8, borderRadius: 10, border: '1px solid #e2e8f0', background: '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                        <div style={{ display: 'grid', gap: 2 }}>
+                          <div style={{ fontWeight: 600 }}>{s.name}</div>
+                          <div style={{ fontSize: 11, color: '#64748b', textTransform: 'uppercase' }}>{s.ability}</div>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <Pill>{s.total >= 0 ? `+${s.total}` : s.total}</Pill>
+                          <Button
+                            size="sm"
+                            variant={s.t === 'none' ? 'outline' : 'default'}
+                            onClick={() => setSkillProf((m) => ({ ...m, [s.id]: nextProf(m[s.id] ?? 'none') }))
+                          }>{s.t === 'none' ? 'None' : s.t === 'half' ? 'Half' : s.t === 'prof' ? 'Prof' : 'Expertise'}</Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )
+              })()}
             </CardContent>
           </Card>
 
@@ -525,6 +717,7 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
                 <Labeled label="Speed"><Pill>{derived.speed} ft.</Pill></Labeled>
                 <Labeled label="HP @lvl"><Pill>{derived.hp}</Pill></Labeled>
                 <Labeled label="AC"><Pill>{derived.ac}</Pill></Labeled>
+                <Labeled label="Background"><div>{background?.name || '—'}</div></Labeled>
               </div>
 
               {/* Combined Abilities + Saves */}
@@ -545,6 +738,7 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
                 </div>
               </div>
 
+              {/* Subactions */}
               <div style={{ display: 'grid', gap: 8, marginTop: 12 }}>
                 <div style={{ fontSize: 12, color: '#64748b' }}>Subactions Gained</div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
@@ -560,6 +754,23 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
                       <div style={{ color: '#64748b' }}>{f.text}</div>
                     </div>
                   ))}
+                </div>
+              </div>
+
+              {/* Racial Features moved to bottom, text size matches Level 1 Features */}
+              <div style={{ display: 'grid', gap: 8, marginTop: 12 }}>
+                <div style={{ fontSize: 12, color: '#64748b' }}>Racial Features</div>
+                <div style={{ display: 'grid', gap: 8, fontSize: 14 }}>
+                  {(race.traits || []).length ? (
+                    (race.traits || []).map((t) => (
+                      <div key={t.id} style={{ padding: 8, borderRadius: 12, border: '1px solid #e2e8f0', background: '#f8fafc' }}>
+                        <div style={{ fontWeight: 600 }}>{t.name}</div>
+                        <div style={{ color: '#64748b' }}>{t.text}</div>
+                      </div>
+                    ))
+                  ) : (
+                    <div style={{ color: '#94a3b8' }}>No racial features.</div>
+                  )}
                 </div>
               </div>
             </CardContent>
@@ -992,7 +1203,53 @@ function ClassManager(props: { classes: Array<{ klass: Klass; level: number; sub
             ) : null}
           </div>
         ))}
+
+        {/* Placeholder for empty state */}
+        {props.classes.length === 0 && (
+          <div style={{ gridColumn: '1 / -1', padding: 8, borderRadius: 12, border: '1px solid #e2e8f0', background: '#f8fafc', textAlign: 'center', color: '#94a3b8' }}>
+            No classes added yet. Use "Add Class" to start building your character.
+          </div>
+        )}
       </div>
+    </div>
+  )
+}
+
+function RaceSelector(props: { value: Race; onChange: (v: Race) => void }) {
+  const [showHumanSubs, setShowHumanSubs] = useState(false)
+  const [showElfSubs, setShowElfSubs] = useState(false)
+  const humanBase = RACES.find(r => r.id === 'human')!
+  const humanVar = RACES.find(r => r.id === 'human-variant')!
+  const elfWood = RACES.find(r => r.id === 'elf-wood')!
+  const elfHigh = RACES.find(r => r.id === 'elf-high')!
+  const others = RACES.filter(r => !['human', 'human-variant', 'elf-wood', 'elf-high'].includes(r.id))
+  const isHumanSelected = props.value.id === 'human' || props.value.id === 'human-variant'
+  const isElfSelected = props.value.id === 'elf-wood' || props.value.id === 'elf-high'
+
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+      {/* Human group button */}
+      <Button size="sm" variant={isHumanSelected ? 'default' : 'outline'} onClick={() => setShowHumanSubs((v) => !v)}>Human</Button>
+      {showHumanSubs && (
+        <>
+          <Button size="sm" variant={props.value.id === 'human' ? 'default' : 'outline'} onClick={() => props.onChange(humanBase)}>Base</Button>
+          <Button size="sm" variant={props.value.id === 'human-variant' ? 'default' : 'outline'} onClick={() => props.onChange(humanVar)}>Variant</Button>
+        </>
+      )}
+
+      {/* Elf group button */}
+      <Button size="sm" variant={isElfSelected ? 'default' : 'outline'} onClick={() => setShowElfSubs((v) => !v)}>Elf</Button>
+      {showElfSubs && (
+        <>
+          <Button size="sm" variant={props.value.id === 'elf-wood' ? 'default' : 'outline'} onClick={() => props.onChange(elfWood)}>Wood</Button>
+          <Button size="sm" variant={props.value.id === 'elf-high' ? 'default' : 'outline'} onClick={() => props.onChange(elfHigh)}>High</Button>
+        </>
+      )}
+
+      {/* Other races remain direct buttons */}
+      {others.map((r) => (
+        <Button key={r.id} size="sm" variant={props.value.id === r.id ? 'default' : 'outline'} onClick={() => props.onChange(r)}>{r.name}</Button>
+      ))}
     </div>
   )
 }
