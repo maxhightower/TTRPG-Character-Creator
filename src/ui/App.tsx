@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
-import { Builder } from './Builder'
-import { Optimizer } from './Optimizer'
+import Builder from './Builder'
+import { NodeOptimizer } from './NodeOptimizer'
 
 export function App() {
   const [tab, setTab] = useState<'builder' | 'optimizer'>('builder')
@@ -10,12 +10,12 @@ export function App() {
         <h1 style={{ margin: 0, fontSize: 18 }}>TTRPG Character Creator (5e)</h1>
         <nav style={{ display: 'flex', gap: 8 }}>
           <button onClick={() => setTab('builder')} style={btn(tab === 'builder')}>Character Builder</button>
-          <button onClick={() => setTab('optimizer')} style={btn(tab === 'optimizer')}>DPR Optimizer</button>
+          <button onClick={() => setTab('optimizer')} style={btn(tab === 'optimizer')}>DPR Graph Optimizer</button>
         </nav>
       </header>
 
       <main style={{ padding: 16 }}>
-        {tab === 'builder' ? <Builder /> : <Optimizer />}
+        {tab === 'builder' ? <Builder /> : <NodeOptimizer />}
       </main>
     </div>
   )
