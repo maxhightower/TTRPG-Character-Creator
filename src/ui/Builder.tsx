@@ -96,12 +96,12 @@ const CLASSES: Klass[] = [
 ]
 
 const EQUIPMENT: Equipment[] = [
-  { id: 'greataxe', name: 'Greataxe', type: 'weapon', group: 'martial', hands: 2, dmg: '1d12 slashing', tags: ['heavy', 'two‑handed'], grants: ['Melee Attack (Greataxe)'] },
+  { id: 'greataxe', name: 'Greataxe', type: 'weapon', group: 'martial', hands: 2, dmg: '1d12 slashing', tags: ['weapon', 'heavy', 'two‑handed'], grants: ['Melee Attack (Greataxe)'] },
   { id: 'shield', name: 'Shield', type: 'shield', ac: 2, hands: 1, tags: ['shield'], grants: ['Raise Shield'] },
-  { id: 'leather', name: 'Leather Armor', type: 'armor', ac: 11, dexMax: Number.POSITIVE_INFINITY, tags: ['light'] },
-  { id: 'breastplate', name: 'Breastplate', type: 'armor', ac: 14, dexMax: 2, tags: ['medium'] },
-  { id: 'chain', name: 'Chain Mail', type: 'armor', ac: 16, dexMax: 0, reqStr: 13, tags: ['heavy'] },
-  { id: 'longbow', name: 'Longbow', type: 'weapon', group: 'martial', hands: 2, dmg: '1d8 piercing', tags: ['heavy', 'two‑handed', 'ranged'], grants: ['Ranged Attack (Longbow)'] },
+  { id: 'leather', name: 'Leather Armor', type: 'armor', ac: 11, dexMax: Number.POSITIVE_INFINITY, tags: ['armor', 'light'] },
+  { id: 'breastplate', name: 'Breastplate', type: 'armor', ac: 14, dexMax: 2, tags: ['armor', 'medium'] },
+  { id: 'chain', name: 'Chain Mail', type: 'armor', ac: 16, dexMax: 0, reqStr: 13, tags: ['armor', 'heavy'] },
+  { id: 'longbow', name: 'Longbow', type: 'weapon', group: 'martial', hands: 2, dmg: '1d8 piercing', tags: ['weapon', 'heavy', 'two‑handed', 'ranged'], grants: ['Ranged Attack (Longbow)'] },
 ]
 
 const SUBACTIONS_BY_ITEM: Record<string, string[]> = {
@@ -310,6 +310,21 @@ export function Builder() {
   const [loadout, setLoadout] = useState<Equipment[]>([EQUIPMENT[0], EQUIPMENT[1]]) // greataxe + shield
   const [history, setHistory] = useState<string[]>([])
   const [future, setFuture] = useState<string[]>([])
+  // Catalog search/filter state
+  const [catalogQuery, setCatalogQuery] = useState('')
+  const [catalogTags, setCatalogTags] = useState<string[]>([])
+  const [catalogFiltersOpen, setCatalogFiltersOpen] = useState(false)
+  const allTags = useMemo(() => dedupe(EQUIPMENT.flatMap((i) => (((i as any).tags || []) as string[]))), [])
+  const filteredEquipment = useMemo(() => {
+    const q = catalogQuery.trim().toLowerCase()
+    return EQUIPMENT.filter((eq) => {
+      const tags = (((eq as any).tags || []) as string[])
+      const nameMatch = q ? eq.name.toLowerCase().includes(q) : true
+      const tagsMatch = catalogTags.length ? catalogTags.every((tg) => tags.includes(tg)) : true
+      return nameMatch && tagsMatch
+    })
+  }, [catalogQuery, catalogTags])
+  const toggleTag = (tag: string) => setCatalogTags((prev) => (prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]))
 
   const state: AppState = { name, race, classes, abilities, loadout }
   const derived = useMemo(() => computeDerived(state), [state])
@@ -390,24 +405,63 @@ export function Builder() {
             <CardHeader><CardTitle><Sword size={16} style={{ marginRight: 6 }} />Equipment & Loadout</CardTitle></CardHeader>
             <CardContent>
               <div style={{ display: 'grid', gap: 12, gridTemplateColumns: '1fr 1fr' }}>
+                {/* Catalog column */}
                 <div style={{ display: 'grid', gap: 8 }}>
                   <div style={{ fontSize: 12, color: '#64748b' }}>Catalog</div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                    {EQUIPMENT.map((eq) => (
-                      <ItemCard key={eq.id} item={eq} onAdd={() => setLoadout((l) => dedupe([...l, eq]))} />
-                    ))}
+                  {/* Search + Filters toggle */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <input
+                      placeholder="Search catalog..."
+                      value={catalogQuery}
+                      onChange={(e) => setCatalogQuery(e.target.value)}
+                      style={{ ...inp, flex: 1 }}
+                    />
+                    <Button
+                      size="sm"
+                      variant={catalogFiltersOpen || catalogTags.length ? 'default' : 'outline'}
+                      onClick={() => setCatalogFiltersOpen((v) => !v)}
+                    >Filters{catalogTags.length ? ` (${catalogTags.length})` : ''}</Button>
+                  </div>
+                  {/* Tag filters (collapsible) */}
+                  {catalogFiltersOpen ? (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                      {allTags.map((tag) => (
+                        <Button
+                          key={tag}
+                          size="sm"
+                          variant={catalogTags.includes(tag) ? 'default' : 'outline'}
+                          onClick={() => toggleTag(tag)}
+                        >{tag}</Button>
+                      ))}
+                      {catalogTags.length ? (
+                        <Button size="sm" variant="ghost" onClick={() => setCatalogTags([])}>Clear filters</Button>
+                      ) : null}
+                    </div>
+                  ) : null}
+                  {/* Scrollable grid of items */}
+                  <div style={{ maxHeight: 360, overflowY: 'auto', paddingRight: 4 }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                      {filteredEquipment.length ? filteredEquipment.map((eq) => (
+                        <ItemCard key={(eq as any).id} item={eq} onAdd={() => setLoadout((l) => dedupe([...l, eq]))} />
+                      )) : (
+                        <div style={{ gridColumn: '1 / -1', fontSize: 12, color: '#94a3b8' }}>No items match your search.</div>
+                      )}
+                    </div>
                   </div>
                 </div>
 
+                {/* Loadout column */}
                 <div style={{ display: 'grid', gap: 8, background: '#f8fafc', padding: 8, borderRadius: 10, border: '1px solid #e2e8f0' }}>
                   <div style={{ fontSize: 12, color: '#64748b' }}>Loadout</div>
-                  <div style={{ display: 'grid', gap: 6 }}>
-                    {loadout.length === 0 && (
-                      <div style={{ fontSize: 12, color: '#94a3b8' }}>Nothing equipped.</div>
-                    )}
-                    {loadout.map((eq) => (
-                      <LoadoutRow key={eq.id} item={eq} onRemove={() => setLoadout((l) => l.filter((x) => (x as any).id !== (eq as any).id))} />
-                    ))}
+                  <div style={{ maxHeight: 360, overflowY: 'auto', paddingRight: 4 }}>
+                    <div style={{ display: 'grid', gap: 6 }}>
+                      {loadout.length === 0 && (
+                        <div style={{ fontSize: 12, color: '#94a3b8' }}>Nothing equipped.</div>
+                      )}
+                      {loadout.map((eq) => (
+                        <LoadoutRow key={(eq as any).id} item={eq} onRemove={() => setLoadout((l) => l.filter((x) => (x as any).id !== (eq as any).id))} />
+                      ))}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -467,27 +521,19 @@ export function Builder() {
                 <Labeled label="AC"><Pill>{derived.ac}</Pill></Labeled>
               </div>
 
-              {/* Saving Throws */}
-              <div style={{ display: 'grid', gap: 8 }}>
-                <div style={{ fontSize: 12, color: '#64748b' }}>Saving Throws</div>
+              {/* Combined Abilities + Saves */}
+              <div style={{ display: 'grid', gap: 8, marginTop: 12 }}>
+                <div style={{ fontSize: 12, color: '#64748b' }}>Abilities & Saves</div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
                   {(['str','dex','con','int','wis','cha'] as AbilityKey[]).map((k) => (
-                    <div key={k} style={{ padding: 8, borderRadius: 12, border: '1px solid #e2e8f0', background: '#f8fafc', display: 'grid', gap: 4 }}>
-                      <div style={{ fontSize: 10, textTransform: 'uppercase', color: '#64748b' }}>{k}</div>
-                      <div><Pill>{derived.saves[k] >= 0 ? `+${derived.saves[k]}` : derived.saves[k]}</Pill></div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div style={{ display: 'grid', gap: 8, marginTop: 12 }}>
-                <div style={{ fontSize: 12, color: '#64748b' }}>Ability Scores (incl. racial)</div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 8 }}>
-                  {(['str','dex','con','int','wis','cha'] as AbilityKey[]).map((k) => (
-                    <div key={k} style={{ padding: 8, borderRadius: 12, border: '1px solid #e2e8f0', background: '#f8fafc' }}>
+                    <div key={k} style={{ padding: 8, borderRadius: 12, border: '1px solid #e2e8f0', background: '#f8fafc', display: 'grid', gap: 6 }}>
                       <div style={{ fontSize: 10, textTransform: 'uppercase', color: '#64748b' }}>{k}</div>
                       <div style={{ fontWeight: 600 }}>{finalAbility(abilities, race)[k]}</div>
                       <div style={{ fontSize: 12, color: '#64748b' }}>mod {mod(finalAbility(abilities, race)[k]) >= 0 ? '+' : ''}{mod(finalAbility(abilities, race)[k])}</div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span style={{ fontSize: 11, color: '#64748b' }}>Save</span>
+                        <Pill>{derived.saves[k] >= 0 ? `+${derived.saves[k]}` : derived.saves[k]}</Pill>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -536,19 +582,187 @@ function Selector<T extends { id: string }>(props: { options: T[]; value: T; onC
 function AbilityEditor(props: { abilities: Record<AbilityKey, number>; onChange: (v: Record<AbilityKey, number>) => void; race: Race }) {
   const final = finalAbility(props.abilities, props.race)
   const order: AbilityKey[] = ['str', 'dex', 'con', 'int', 'wis', 'cha']
+
+  // Roll pool + DnD state
+  type RollToken = { id: string; value: number }
+  const [rollTokens, setRollTokens] = useState<RollToken[]>([])
+  const [assignedFromPool, setAssignedFromPool] = useState<Partial<Record<AbilityKey, number>>>({})
+  const makeId = () => Math.random().toString(36).slice(2, 9)
+  // Point Buy state
+  const [pointBuy, setPointBuy] = useState(false)
+  // NEW: toggle for generator options
+  const [genOpen, setGenOpen] = useState(false)
+  const POINT_BUY_BUDGET = 27
+  function pointCost(score: number) {
+    switch (score) {
+      case 8: return 0
+      case 9: return 1
+      case 10: return 2
+      case 11: return 3
+      case 12: return 4
+      case 13: return 5
+      case 14: return 7
+      case 15: return 9
+      default: return Number.POSITIVE_INFINITY
+    }
+  }
+  function totalPointsSpent(vals: Record<AbilityKey, number>) {
+    return (['str','dex','con','int','wis','cha'] as AbilityKey[]).reduce((s, k) => {
+      const v = Math.max(8, Math.min(15, vals[k] || 8))
+      return s + pointCost(v)
+    }, 0)
+  }
+  const pointsSpent = totalPointsSpent(props.abilities)
+  const pointsRemaining = Math.max(0, POINT_BUY_BUDGET - pointsSpent)
+
+  // Generators
+  function rollDice(count: number, sides: number) { return Array.from({ length: count }, () => 1 + Math.floor(Math.random() * sides)) }
+  function gen4d6dlOnce() { const r = rollDice(4, 6).sort((a, b) => b - a); return r[0] + r[1] + r[2] }
+  function gen3d6Once() { return rollDice(3, 6).reduce((a, b) => a + b, 0) }
+  function toTokens(vals: number[]): RollToken[] { return vals.map((v) => ({ id: makeId(), value: v })) }
+
+  function roll4d6dlPool() {
+    const vals = Array.from({ length: 6 }, () => gen4d6dlOnce())
+    setRollTokens(toTokens(vals))
+    setAssignedFromPool({})
+    setPointBuy(false)
+  }
+  function roll3d6Pool() {
+    const vals = Array.from({ length: 6 }, () => gen3d6Once())
+    setRollTokens(toTokens(vals))
+    setAssignedFromPool({})
+    setPointBuy(false)
+  }
+  function roll1d20Pool() {
+    const vals = Array.from({ length: 6 }, () => 1 + Math.floor(Math.random() * 20))
+    setRollTokens(toTokens(vals))
+    setAssignedFromPool({})
+    setPointBuy(false)
+  }
+  function applyScores(scores: number[]) {
+    const sorted = [...scores].sort((a, b) => b - a)
+    const next: Record<AbilityKey, number> = { ...props.abilities }
+    order.forEach((k, i) => { next[k] = clamp(sorted[i] ?? 10, 3, 20) })
+    props.onChange(next)
+  }
+
+  function autoAssignFromPool() {
+    if (!rollTokens.length) return
+    applyScores(rollTokens.map(t => t.value))
+    setRollTokens([])
+    setAssignedFromPool({})
+  }
+  function clearRolls() { setRollTokens([]); setAssignedFromPool({}) }
+
+  // DnD handlers
+  function onTokenDragStart(e: React.DragEvent<HTMLDivElement>, tokenId: string) {
+    e.dataTransfer.setData('text/plain', tokenId)
+    e.dataTransfer.effectAllowed = 'move'
+  }
+  function onAbilityDragOver(e: React.DragEvent<HTMLDivElement>) { e.preventDefault(); e.dataTransfer.dropEffect = 'move' }
+  function onAbilityDrop(k: AbilityKey, e: React.DragEvent<HTMLDivElement>) {
+    e.preventDefault()
+    const tokenId = e.dataTransfer.getData('text/plain')
+    if (!tokenId) return
+    const tokenIdx = rollTokens.findIndex(t => t.id === tokenId)
+    if (tokenIdx === -1) return
+    const token = rollTokens[tokenIdx]
+    const remaining = rollTokens.filter((_, i) => i !== tokenIdx)
+
+    // If this ability already had a pool-assigned value, return it to pool
+    const prev = assignedFromPool[k]
+    const newPool = [...remaining]
+    if (typeof prev === 'number') newPool.push({ id: makeId(), value: prev })
+
+    // Update assignment map and abilities
+    setAssignedFromPool({ ...assignedFromPool, [k]: token.value })
+    setRollTokens(newPool)
+    props.onChange({ ...props.abilities, [k]: clamp(token.value, 3, 20) })
+  }
+
+  function adjustAbility(k: AbilityKey, delta: number) {
+    if (!pointBuy) {
+      props.onChange({ ...props.abilities, [k]: clamp((props.abilities[k] || 10) + delta, 3, 20) })
+      return
+    }
+    const current = clamp(props.abilities[k] || 8, 8, 15)
+    const next = clamp(current + delta, 8, 15)
+    if (next === current) return
+    const diff = pointCost(next) - pointCost(current)
+    if (diff <= 0 || pointsRemaining - diff >= 0) {
+      props.onChange({ ...props.abilities, [k]: next })
+    }
+  }
+
   return (
     <div style={{ gridColumn: '1 / -1', display: 'grid', gap: 8 }}>
       <div style={{ fontSize: 12, color: '#64748b' }}>Abilities</div>
+
+      {/* Generators */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
+        <Button size="sm" variant="outline" onClick={() => setGenOpen((v) => !v)}>Generate</Button>
+        <Button size="sm" variant="ghost" onClick={() => { props.onChange({ str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 }); clearRolls(); setPointBuy(false) }}>Reset</Button>
+        {genOpen ? (
+          <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
+            <Button size="sm" variant="outline" onClick={roll4d6dlPool}>🎲 4d6 (drop lowest)</Button>
+            <Button size="sm" variant="outline" onClick={roll3d6Pool}>🎲 3d6</Button>
+            <Button size="sm" variant="outline" onClick={roll1d20Pool}>🎲 1d20</Button>
+            <Button size="sm" variant="outline" onClick={() => { applyScores([15, 14, 13, 12, 10, 8]); clearRolls(); setPointBuy(false) }}>Standard Array</Button>
+            {!pointBuy ? (
+              <Button size="sm" variant="outline" onClick={() => { setPointBuy(true); clearRolls(); props.onChange({ str: 8, dex: 8, con: 8, int: 8, wis: 8, cha: 8 }) }}>Point Buy (27)</Button>
+            ) : (
+              <>
+                <span style={{ fontSize: 12, color: '#64748b' }}>Remaining: <strong>{pointsRemaining}</strong></span>
+                <Button size="sm" variant="ghost" onClick={() => setPointBuy(false)}>Exit Point Buy</Button>
+              </>
+            )}
+            {rollTokens.length ? (
+              <>
+                <Button size="sm" variant="outline" onClick={autoAssignFromPool}>Auto-assign high→low</Button>
+                <Button size="sm" variant="ghost" onClick={clearRolls}>Clear Rolls</Button>
+              </>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+
+      {/* Roll pool as draggable tokens (only for dice methods) */}
+      {rollTokens.length ? (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center' }}>
+          {rollTokens.map((t) => (
+            <div
+              key={t.id}
+              draggable
+              onDragStart={(e) => onTokenDragStart(e, t.id)}
+              title={`Drag ${t.value} onto a stat`}
+              style={{ width: 36, height: 36, borderRadius: 8, border: '1px solid #ef4444', background: '#ef4444', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 600 }}
+            >
+              {t.value}
+            </div>
+          ))}
+        </div>
+      ) : null}
+
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 8 }}>
         {order.map((k) => (
-          <div key={k} style={{ padding: 8, borderRadius: 12, border: '1px solid #e2e8f0', background: '#f8fafc', display: 'grid', gap: 6 }}>
+          <div
+            key={k}
+            onDragOver={onAbilityDragOver}
+            onDrop={(e) => onAbilityDrop(k, e)}
+            style={{ padding: 8, borderRadius: 12, border: '1px solid #e2e8f0', background: '#f8fafc', display: 'grid', gap: 6 }}
+          >
             <div style={{ fontSize: 10, textTransform: 'uppercase', color: '#64748b' }}>{k}</div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Button size="icon" variant="outline" onClick={() => props.onChange({ ...props.abilities, [k]: clamp((props.abilities[k] || 10) - 1, 3, 20) })}>−</Button>
-              <div style={{ fontWeight: 600, width: 24, textAlign: 'center' }}>{props.abilities[k] || 10}</div>
-              <Button size="icon" variant="outline" onClick={() => props.onChange({ ...props.abilities, [k]: clamp((props.abilities[k] || 10) + 1, 3, 20) })}>+</Button>
+              <Button size="icon" variant="outline" onClick={() => adjustAbility(k, -1)}>−</Button>
+              <div style={{ fontWeight: 600, width: 24, textAlign: 'center' }}>{pointBuy ? Math.max(8, Math.min(15, props.abilities[k] || 8)) : (props.abilities[k] || 10)}</div>
+              <Button size="icon" variant="outline" onClick={() => adjustAbility(k, +1)}>+</Button>
             </div>
             <div style={{ fontSize: 12, color: '#64748b' }}>mod {mod(final[k]) >= 0 ? '+' : ''}{mod(final[k])}</div>
+            {typeof assignedFromPool[k] === 'number' ? (
+              <div style={{ fontSize: 11, color: '#64748b' }}>Assigned: {assignedFromPool[k]}</div>
+            ) : (
+              rollTokens.length ? <div style={{ fontSize: 11, color: '#94a3b8' }}>Drop a roll here</div> : null
+            )}
           </div>
         ))}
       </div>
@@ -565,7 +779,7 @@ function finalAbility(abilities: Record<AbilityKey, number>, race: Race): Record
 function ItemCard({ item, onAdd }: { item: Equipment; onAdd: () => void }) {
   const tags = (item as any).tags as string[] | undefined
   return (
-    <div style={{ padding: 8, borderRadius: 10, border: '1px solid #e2e8f0', background: 'white', display: 'grid', gap: 6 }}>
+    <div style={{ padding: 8, borderRadius: 10, border: '1px solid #e2e8f0', background: 'white', display: 'grid', gap: 6, minHeight: 90 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         {item.type === 'weapon' && <Sword size={16} />}
         {item.type === 'shield' && <Shield size={16} />}
@@ -579,7 +793,7 @@ function ItemCard({ item, onAdd }: { item: Equipment; onAdd: () => void }) {
             {item.type === 'shield' && `+${(item as any).ac || 2} AC`}
           </span>
         </div>
-        <Button size="icon" variant="outline" onClick={onAdd} aria-label="Add"><Plus size={16} /></Button>
+        <Button size="icon" onClick={onAdd} aria-label="Add"><Plus size={16} /></Button>
       </div>
       {tags?.length ? (
         <div style={{ fontSize: 11, color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
