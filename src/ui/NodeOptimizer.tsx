@@ -1,6 +1,7 @@
 import React, { useCallback, useMemo, useRef, useState } from 'react'
 import ReactFlow, { Background, Controls, MiniMap, addEdge, Handle, Position, useEdgesState, useNodesState, useReactFlow } from 'reactflow'
 import 'reactflow/dist/style.css'
+import type { AppState as BuilderState } from './Builder'
 
 // Fallback remover for nodes that were created before onDelete was injected
 let globalRemoveNode: null | ((id: string) => void) = null
@@ -305,7 +306,7 @@ function OutputNode({ id, data }: any) {
 
 const nodeTypes = { fighterStyle: FighterStyleNode, weapon: WeaponNode, feats: FeatNode, features: ClassFeaturesNode, buffs: BuffsNode, output: OutputNode }
 
-export function NodeOptimizer() {
+export function NodeOptimizer(props: { character?: BuilderState; derived?: any }) {
   // Global knobs
   const [level, setLevel] = useState(5)
   const [str, setStr] = useState(16)
@@ -316,8 +317,19 @@ export function NodeOptimizer() {
   const [resist, setResist] = useState<'none' | 'slashing' | 'piercing' | 'bludgeoning'>('none')
   const [vuln, setVuln] = useState<'none' | 'slashing' | 'piercing' | 'bludgeoning'>('none')
 
-  const prof = useMemo(() => proficiencyBonus(level), [level])
-  const attacksBase = useMemo(() => fighterAttacksPerRound(level), [level])
+  // Sync from Builder when available
+  React.useEffect(() => {
+    const builderLevel = props.derived?.totalLevel
+    if (typeof builderLevel === 'number' && builderLevel > 0) setLevel(builderLevel)
+  }, [props.derived?.totalLevel])
+  React.useEffect(() => {
+    if (props.character?.abilities?.str) setStr(props.character.abilities.str)
+    if (props.character?.abilities?.dex) setDex(props.character.abilities.dex)
+  }, [props.character?.abilities?.str, props.character?.abilities?.dex])
+
+  const effLevel = props.derived?.totalLevel ?? level
+  const prof = useMemo(() => proficiencyBonus(effLevel), [effLevel])
+  const attacksBase = useMemo(() => fighterAttacksPerRound(effLevel), [effLevel])
 
   // Initial graph (handlers are seeded later)
   const initialNodes = useMemo(() => [
@@ -442,12 +454,12 @@ export function NodeOptimizer() {
 
       const styleId = styleNode?.data?.styleId as string | undefined
       const feats = featNode?.data || {}
-      const features = { ...(featuresNode?.data || {}), level }
+      const features = { ...(featuresNode?.data || {}), level: effLevel }
       const buffs = buffsNode?.data || {}
       const weapon = WEAPON_PRESETS.find((w) => w.id === weaponNode.data.weaponId) ?? WEAPON_PRESETS[0]
 
-      const strMod = abilityMod(str)
-      const dexMod = abilityMod(dex)
+      const strMod = props.derived?.strMod ?? abilityMod(str)
+      const dexMod = props.derived?.dexMod ?? abilityMod(dex)
       const isRanged = weapon.ranged === true
       const usesDex = isRanged || weapon.finesse
 
@@ -486,7 +498,7 @@ export function NodeOptimizer() {
       if (feats.ss && qualifiesSS && isRanged) { flatDamageBonus += 10 }
       let pamBonusAvg = 0
       if (feats.pam && weapon.tags?.includes('pam') && !isRanged) {
-        const rageBonus = features.rage ? (level >= 16 ? 4 : level >= 9 ? 3 : 2) : 0
+        const rageBonus = features.rage ? (effLevel >= 16 ? 4 : effLevel >= 9 ? 3 : 2) : 0
         const riderOnHitAvgPam = buffs.d6onhit ? DICE_AVG.d6 : 0
         const buttAvg = DICE_AVG.d4 + dmgMod + rageBonus + riderOnHitAvgPam
         const critDieAvg = DICE_AVG.d4
@@ -498,13 +510,13 @@ export function NodeOptimizer() {
       const riderOnHitAvg = buffs.d6onhit ? DICE_AVG.d6 : 0
       if (buffs.d6onhit) notes.push("Hex/Hunter's Mark: +1d6 on hit.")
 
-      const rageBonus = features.rage ? (level >= 16 ? 4 : level >= 9 ? 3 : 2) : 0
+      const rageBonus = features.rage ? (effLevel >= 16 ? 4 : effLevel >= 9 ? 3 : 2) : 0
       if (rageBonus && !isRanged) { flatDamageBonus += rageBonus; notes.push(`Rage: +${rageBonus} melee damage per hit.`) }
 
       let smiteDice = 0, smitesPerRound = 0
       if (features.smite) { smiteDice = features.smiteDice ?? 2; smitesPerRound = features.smitesPerRound ?? 1 }
 
-      const sneakDice = features.sneak ? Math.min(10, Math.ceil(level / 2)) : 0
+      const sneakDice = features.sneak ? Math.min(10, Math.ceil(effLevel / 2)) : 0
 
       const critDiceAvg = diceAverage(dice, { greatWeaponFighting: gwf })
       const avgWeapon = baseDieAvg + dmgMod + flatDamageBonus + riderOnHitAvg
@@ -534,9 +546,9 @@ export function NodeOptimizer() {
     historyRef.current.suppress = true
     setNodes(nextNodes as any)
     historyRef.current.suppress = false
-  }, [nodes, edges, level, str, dex, targetAC, attacksBase, useVersatile, advMode, resist, vuln, setNodes])
+  }, [nodes, edges, effLevel, str, dex, targetAC, attacksBase, useVersatile, advMode, resist, vuln, setNodes, prof, props.derived?.strMod, props.derived?.dexMod])
 
-  React.useEffect(() => { computeGraph() }, [nodes.length, JSON.stringify(edges), level, str, dex, targetAC, useVersatile, advMode, resist, vuln, computeGraph])
+  React.useEffect(() => { computeGraph() }, [nodes.length, JSON.stringify(edges), effLevel, str, dex, targetAC, useVersatile, advMode, resist, vuln, computeGraph])
 
   const addNode = (type: keyof typeof nodeTypes) => {
     const id = `${type}-${crypto.randomUUID().slice(0, 6)}`
@@ -573,10 +585,10 @@ export function NodeOptimizer() {
         <section style={card}>
           <div style={{ padding: 12, borderBottom: '1px solid #e2e8f0', fontWeight: 600 }}>Global Settings</div>
           <div style={{ padding: 12, display: 'grid', gap: 12 }}>
-            <Slider label={`Level: ${level}`} min={1} max={20} value={level} onChange={(v) => setLevel(v)} />
+            <Slider label={`Level: ${effLevel}`} min={1} max={20} value={level} onChange={(v) => setLevel(v)} />
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-              <Slider label={`STR: ${str}`} min={8} max={20} value={str} onChange={(v) => setStr(v)} />
-              <Slider label={`DEX: ${dex}`} min={8} max={20} value={dex} onChange={(v) => setDex(v)} />
+              <Slider label={`STR: ${str} ${props.derived?.strMod !== undefined ? `(mod ${props.derived.strMod >= 0 ? '+' : ''}${props.derived.strMod})` : ''}`} min={8} max={20} value={str} onChange={(v) => setStr(v)} />
+              <Slider label={`DEX: ${dex} ${props.derived?.dexMod !== undefined ? `(mod ${props.derived.dexMod >= 0 ? '+' : ''}${props.derived.dexMod})` : ''}`} min={8} max={20} value={dex} onChange={(v) => setDex(v)} />
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
               <label style={{ display: 'grid', gap: 6, fontSize: 12, color: '#475569' }}>Target AC
@@ -614,7 +626,7 @@ export function NodeOptimizer() {
                 </label>
               </div>
             </div>
-            <div style={{ fontSize: 12, color: '#475569' }}>Proficiency: <strong>+{proficiencyBonus(level)}</strong> • Base Attacks/Round (Fighter): <strong>{fighterAttacksPerRound(level)}</strong></div>
+            <div style={{ fontSize: 12, color: '#475569' }}>Proficiency: <strong>+{proficiencyBonus(effLevel)}</strong> • Base Attacks/Round (Fighter): <strong>{fighterAttacksPerRound(effLevel)}</strong></div>
           </div>
         </section>
 

@@ -289,7 +289,7 @@ const card: React.CSSProperties = { border: '1px solid #e2e8f0', borderRadius: 1
 
 // ---------------- App State ----------------
 
-type AppState = {
+export type AppState = {
   name: string
   race: Race
   classes: Array<{ klass: Klass; level: number; subclass?: Subclass }>
@@ -299,7 +299,7 @@ type AppState = {
 
 // ---------------- Main Component ----------------
 
-export function Builder() {
+export function Builder(props: { onCharacterChange?: (state: AppState, derived?: any) => void }) {
   const [mode, setMode] = useState<'guided' | 'power'>('power')
   const [name, setName] = useState('New Hero')
   const [race, setRace] = useState<Race>(RACES[0])
@@ -330,6 +330,12 @@ export function Builder() {
   const derived = useMemo(() => computeDerived(state), [state])
   const issues = useMemo(() => validateChoice(state), [state])
   const sim = useMemo(() => simulateReadiness(state), [state])
+
+  // Notify parent when character changes
+  useEffect(() => {
+    props.onCharacterChange?.(state, derived)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [name, race, JSON.stringify(classes), JSON.stringify(abilities), JSON.stringify(loadout), derived])
 
   function snapshot() {
     setHistory((h) => [...h, JSON.stringify(state)])
