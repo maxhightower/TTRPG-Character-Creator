@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect, useRef } from 'react'
-import { Plus, Dice6, Info, Redo2, Scale, Settings2, Shield, Shuffle, Sparkles, Sword, Undo2, Zap } from 'lucide-react'
+import { Plus, Dice6, Info, Redo2, Scale, Settings2, Shield, Shuffle, Sparkles, Sword, Undo2, Zap, List, Columns, LayoutGrid } from 'lucide-react'
 
 // ---------------- Demo Data (typed) ----------------
 
@@ -43,6 +43,14 @@ const RACES: Race[] = [
   { id: 'human-variant', name: 'Human (Variant)', asis: { str: 1, dex: 1 }, speed: 30, traits: [ { id: 'adaptable', name: 'Adaptable', text: '+1 to two ability scores (demo variant).' } ] },
   { id: 'elf-wood', name: 'Elf (Wood)', asis: { dex: 2, wis: 1 }, speed: 35, traits: [ { id: 'darkvision', name: 'Darkvision', text: 'See in dim light 60 ft.' }, { id: 'keen', name: 'Keen Senses', text: 'Proficiency in Perception.' } ] },
   { id: 'elf-high', name: 'Elf (High)', asis: { dex: 2, int: 1 }, speed: 30, traits: [ { id: 'darkvision', name: 'Darkvision', text: 'See in dim light 60 ft.' }, { id: 'keen', name: 'Keen Senses', text: 'Proficiency in Perception.' } ] },
+  { id: 'dwarf-hill', name: 'Dwarf (Hill)', asis: { con: 2, wis: 1 }, speed: 25, traits: [ { id: 'darkvision', name: 'Darkvision', text: 'See in dim light 60 ft.' }, { id: 'resilience', name: 'Dwarven Resilience', text: 'Advantage on saves vs. poison.' } ] },
+  { id: 'dwarf-mountain', name: 'Dwarf (Mountain)', asis: { con: 2, str: 2 }, speed: 25, traits: [ { id: 'darkvision', name: 'Darkvision', text: 'See in dim light 60 ft.' }, { id: 'armor-training', name: 'Dwarven Armor Training', text: 'Proficiency with light and medium armor.' } ] },
+  { id: 'halfling-lightfoot', name: 'Halfling (Lightfoot)', asis: { dex: 2, cha: 1 }, speed: 25, traits: [ { id: 'lucky', name: 'Lucky', text: 'Reroll 1s on attack, ability, or save rolls (demo flavor).' }, { id: 'brave', name: 'Brave', text: 'Advantage on saves vs. fear.' } ] },
+  { id: 'halfling-stout', name: 'Halfling (Stout)', asis: { dex: 2, con: 1 }, speed: 25, traits: [ { id: 'lucky', name: 'Lucky', text: 'Reroll 1s on attack, ability, or save rolls (demo flavor).' }, { id: 'brave', name: 'Brave', text: 'Advantage on saves vs. fear.' }, { id: 'stout-resilience', name: 'Stout Resilience', text: 'Advantage on saves vs. poison (demo flavor).' } ] },
+  { id: 'tiefling', name: 'Tiefling', asis: { cha: 2, int: 1 }, speed: 30, traits: [ { id: 'darkvision', name: 'Darkvision', text: 'See in dim light 60 ft.' }, { id: 'hellish-resistance', name: 'Hellish Resistance', text: 'Resistance to fire damage.' } ] },
+  { id: 'dragonborn', name: 'Dragonborn', asis: { str: 2, cha: 1 }, speed: 30, traits: [ { id: 'draconic-ancestry', name: 'Draconic Ancestry', text: 'Breath weapon and damage resistance depend on ancestry.' }, { id: 'breath-weapon', name: 'Breath Weapon', text: 'Exhale destructive energy (demo flavor).' }, { id: 'damage-resistance', name: 'Damage Resistance', text: 'Resistance based on ancestry.' } ] },
+  { id: 'gnome', name: 'Gnome', asis: { int: 2 }, speed: 25, traits: [ { id: 'darkvision', name: 'Darkvision', text: 'See in dim light 60 ft.' }, { id: 'gnome-cunning', name: 'Gnome Cunning', text: 'Advantage on INT, WIS, and CHA saves against magic.' } ] },
+  { id: 'half-orc', name: 'Half-Orc', asis: { str: 2, con: 1 }, speed: 30, traits: [ { id: 'darkvision', name: 'Darkvision', text: 'See in dim light 60 ft.' }, { id: 'menacing', name: 'Menacing', text: 'Proficiency in Intimidation.' }, { id: 'relentless-endurance', name: 'Relentless Endurance', text: 'When reduced to 0 HP but not killed, drop to 1 HP instead (1/long rest).' }, { id: 'savage-attacks', name: 'Savage Attacks', text: 'Extra weapon die on a crit (demo flavor).' } ] },
 ]
 
 const CLASSES: Klass[] = [
@@ -173,6 +181,21 @@ const SKILLS: Array<{ id: string; name: string; ability: AbilityKey }> = [
   { id: 'survival', name: 'Survival', ability: 'wis' },
 ]
 
+// Grants mapping (demo): map certain race traits and classes to skill choices.
+const RACE_TRAIT_SKILLS: Record<string, string[]> = {
+  // Elf Keen Senses -> Perception
+  keen: ['perception'],
+  // Half-Orc Menacing -> Intimidation
+  menacing: ['intimidation'],
+}
+
+// Simple class skill choice lists (demo approximation)
+const CLASS_SKILL_CHOICES: Record<string, { count: number; options: string[] }> = {
+  barbarian: { count: 2, options: ['animal', 'athletics', 'intimidation', 'nature', 'perception', 'survival'] },
+  fighter: { count: 2, options: ['acrobatics', 'animal', 'athletics', 'history', 'insight', 'intimidation', 'perception', 'survival'] },
+  wizard: { count: 2, options: ['arcana', 'history', 'insight', 'investigation', 'medicine', 'religion'] },
+}
+
 // Backgrounds (demo)
 type Background = {
   id: string
@@ -186,6 +209,9 @@ const BACKGROUNDS: Background[] = [
   { id: 'soldier', name: 'Soldier', skills: ['athletics', 'intimidation'], tools: ['gaming set', 'vehicles (land)'], feature: { name: 'Military Rank', text: 'You have a military rank and can exert influence.' } },
   { id: 'acolyte', name: 'Acolyte', skills: ['insight', 'religion'], languages: 2, feature: { name: 'Shelter of the Faithful', text: 'You command respect from those who share your faith.' } },
   { id: 'criminal', name: 'Criminal', skills: ['deception', 'stealth'], tools: ['thieves’ tools', 'gaming set'], feature: { name: 'Criminal Contact', text: 'You have a reliable and trustworthy contact.' } },
+  { id: 'sage', name: 'Sage', skills: ['arcana', 'history'], languages: 2, feature: { name: 'Researcher', text: 'You can find information with ease in libraries and archives.' } },
+  { id: 'folk-hero', name: 'Folk Hero', skills: ['animal', 'survival'], tools: ['artisan’s tools', 'vehicles (land)'], feature: { name: 'Rustic Hospitality', text: 'You fit in among common folk and can find shelter among them.' } },
+  { id: 'urchin', name: 'Urchin', skills: ['sleight', 'stealth'], tools: ['disguise kit', 'thieves’ tools'], feature: { name: 'City Secrets', text: 'You know the secret patterns and flow to cities and can find passages through the urban sprawl.' } },
 ]
 
 // ---------------- Utilities ----------------
@@ -315,7 +341,7 @@ function Labeled(props: { label: string; children: React.ReactNode }) {
 }
 
 function Pill(props: { children: React.ReactNode }) {
-  return <span style={{ padding: '2px 8px', borderRadius: 999, background: '#f1f5f9', color: '#0f172a', fontSize: 12 }}>{props.children}</span>
+  return <span style={{ padding: '2px 8px', borderRadius: 999, background: '#f1f5f9', color: '#0f172a', fontSize: 12, whiteSpace: 'nowrap' }}>{props.children}</span>
 }
 
 function Button(props: React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: 'default' | 'outline' | 'ghost'; size?: 'sm' | 'md' | 'icon' }) {
@@ -325,7 +351,8 @@ function Button(props: React.ButtonHTMLAttributes<HTMLButtonElement> & { variant
     border: '1px solid #cbd5e1',
     background: variant === 'default' ? '#0ea5e9' : 'white',
     color: variant === 'default' ? 'white' : '#0f172a',
-    cursor: 'pointer',
+  cursor: 'pointer',
+  whiteSpace: 'nowrap',
   }
   if (variant === 'outline') { base.background = 'white' }
   if (variant === 'ghost') { base.background = 'transparent'; base.border = '1px solid transparent' }
@@ -393,6 +420,16 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
   type ProfType = 'none' | 'half' | 'prof' | 'expert'
   const [skillProf, setSkillProf] = useState<Record<string, ProfType>>({})
   const [skillSort, setSkillSort] = useState<'ability' | 'alpha' | 'bonus' | 'proftype'>('ability')
+  // Skills list layout mode
+  const [skillLayout, setSkillLayout] = useState<'single' | 'double' | 'grid'>('grid')
+  // Track sources that grant a skill (bg, race, class:<id>) to avoid orange toggling issues
+  const [skillSources, setSkillSources] = useState<Record<string, string[]>>({})
+  // Skills tab view
+  const [skillTab, setSkillTab] = useState<'list' | 'sources'>('list')
+  // Pending choices local selections
+  const [classSkillPicks, setClassSkillPicks] = useState<Record<string, string[]>>({})
+  const [bgReplPicks, setBgReplPicks] = useState<string[]>([])
+  const [raceReplPicks, setRaceReplPicks] = useState<string[]>([])
   const [history, setHistory] = useState<string[]>([])
   const [future, setFuture] = useState<string[]>([])
   // Catalog search/filter state
@@ -427,6 +464,78 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
   }, [classes])
   function setSubclassChoice(klassId: string, s: Subclass) {
     setClasses((cs) => cs.map((c) => (c.klass.id === klassId ? { ...c, subclass: s } : c)))
+  }
+
+  // Auto-apply background/race skill grants immediately, and remove stale grants when switching
+  useEffect(() => {
+    const bgSkills = background?.skills ?? []
+    const raceSkills = (race?.traits || []).flatMap((t) => RACE_TRAIT_SKILLS[t.id] || [])
+    const desiredBg = new Set(bgSkills)
+    const desiredRace = new Set(raceSkills)
+
+    // Additions needed (based on current sources)
+    const needsBg = bgSkills.filter((s) => !(skillSources[s] || []).includes('bg'))
+    const needsRace = raceSkills.filter((s) => !(skillSources[s] || []).includes('race'))
+
+    // Reconcile sources: remove stale 'bg' / 'race' entries not in desired sets; then add missing
+    let newSources: Record<string, string[]> = {}
+    setSkillSources((prev) => {
+      const out: Record<string, string[]> = {}
+      // First, copy and filter existing sources
+      Object.entries(prev).forEach(([skill, sources]) => {
+        const filtered = sources.filter((src) => {
+          if (src === 'bg') return desiredBg.has(skill)
+          if (src === 'race') return desiredRace.has(skill)
+          return true // keep all other sources (class picks, race-pick, etc.)
+        })
+        if (filtered.length) out[skill] = filtered
+      })
+      // Then, add missing bg/race sources per desired sets
+      bgSkills.forEach((s) => { out[s] = Array.from(new Set([...(out[s] || []), 'bg'])) })
+      raceSkills.forEach((s) => { out[s] = Array.from(new Set([...(out[s] || []), 'race'])) })
+      newSources = out
+      return out
+    })
+
+    // Sync proficiency map to sources: add prof for any sourced skills; remove for unsourced
+    setSkillProf((prev) => {
+      const out: Record<string, ProfType> = {}
+      Object.keys(newSources).forEach((skill) => {
+        out[skill] = prev[skill] && prev[skill] !== 'none' ? prev[skill] : 'prof'
+      })
+      return out
+    })
+  }, [background, race, skillSources])
+
+  // Helpers to add/remove sources with proficiency updates
+  function addSkillSource(skillId: string, source: string) {
+    setSkillSources((prev) => {
+      const curr = prev[skillId] || []
+      if (curr.includes(source)) return prev
+      const out = { ...prev, [skillId]: [...curr, source] }
+      return out
+    })
+    setSkillProf((prev) => ({ ...prev, [skillId]: prev[skillId] && prev[skillId] !== 'none' ? prev[skillId] : 'prof' }))
+  }
+  function removeSkillSource(skillId: string, source: string) {
+    let willRemain = true
+    setSkillSources((prev) => {
+      const curr = prev[skillId] || []
+      if (!curr.includes(source)) return prev
+      const remaining = curr.filter((s) => s !== source)
+      willRemain = remaining.length > 0
+      const out = { ...prev }
+      if (remaining.length) out[skillId] = remaining
+      else delete out[skillId]
+      return out
+    })
+    setSkillProf((prev) => {
+      // If there are no sources left for this skill, drop proficiency entry
+      if (willRemain) return prev
+      const out = { ...prev }
+      delete out[skillId]
+      return out
+    })
   }
 
   // Notify parent when character changes
@@ -517,6 +626,181 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
             </CardContent>
           </Card>
 
+          {/* Pending Choices: background/race/class skills the player hasn't finalized */}
+          {(() => {
+            // Determine skills granted by any source
+            const taken = new Set(Object.keys(skillSources))
+
+            // Background skills (fixed in this demo). If conflict, offer replacements.
+            const bgSkills = background?.skills ?? []
+            const bgMissing = bgSkills.filter((s) => !taken.has(s))
+            const bgConflicts = bgSkills.filter((s) => taken.has(s))
+
+            // Race trait skills (e.g., Keen Senses -> Perception)
+            const raceSkills = (race?.traits || []).flatMap((t) => RACE_TRAIT_SKILLS[t.id] || [])
+            const raceMissing = raceSkills.filter((s) => !(skillSources[s] || []).length)
+            const raceConflicts = raceSkills.filter((s) => (skillSources[s] || []).some((src) => src !== 'race' && src !== 'race-pick' && src !== 'manual'))
+
+            // Class skill choices: for each class, count picks not yet made
+            const classNeeds: Array<{ klassId: string; klassName: string; need: number; count: number; options: string[] }> = []
+            classes.forEach((c) => {
+              const spec = CLASS_SKILL_CHOICES[c.klass.id]
+              if (!spec) return
+              const current = classSkillPicks[c.klass.id] || []
+              const selected = current.filter(Boolean)
+              const remaining = Math.max(0, spec.count - selected.length)
+              // Always show the class block; if remaining === 0 we mark it as completed
+              const opts = spec.options
+              classNeeds.push({ klassId: c.klass.id, klassName: c.klass.name, need: remaining, count: spec.count, options: opts })
+            })
+
+            // Replacement pool for conflicts: show all skills; mark already-proficient as orange/disabled
+            const allSkillIds = SKILLS.map((s) => s.id)
+            const availableForReplacement = allSkillIds
+            // Background conflicts do not grant alternatives; only race replacements remain
+            const remainingReplacements = Math.max(0, raceConflicts.length - raceReplPicks.length)
+
+            const hasAnyPending = classNeeds.reduce((a, b) => a + b.need, 0) + remainingReplacements > 0
+
+
+            return (
+              <Card>
+                <CardHeader><CardTitle><Sparkles size={16} style={{ marginRight: 6 }} />Pending Choices</CardTitle></CardHeader>
+                <CardContent>
+                  <div style={{ display: 'grid', gap: 12 }}>
+                    {!hasAnyPending && (
+                      <div style={{ fontSize: 12, color: '#64748b' }}>
+                        No pending choices. You can still review selections here.
+                      </div>
+                    )}
+                    {/* Background missing grants */}
+                    {(bgMissing.length > 0 || bgConflicts.length > 0) && (
+                      <div style={{ display: 'grid', gap: 8 }}>
+                        <div style={{ fontWeight: 600 }}>Background: {background?.name}</div>
+                        {bgMissing.length > 0 && (
+                          <div style={{ fontSize: 12, color: '#64748b' }}>Grants: {bgMissing.map((s) => SKILLS.find(x => x.id === s)?.name || s).join(', ')} (will be applied)</div>
+                        )}
+                        {bgConflicts.length > 0 && (
+                          <div style={{ fontSize: 12, color: '#64748b' }}>
+                            Conflicts detected: {bgConflicts.map((s) => SKILLS.find(x => x.id === s)?.name || s).join(', ')}. This background doesn't grant alternatives.
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Race missing grants */}
+                    {(raceMissing.length > 0 || raceConflicts.length > 0) && (
+                      <div style={{ display: 'grid', gap: 8 }}>
+                        <div style={{ fontWeight: 600 }}>Race: {race?.name}</div>
+                        {raceMissing.length > 0 && (
+                          <div style={{ fontSize: 12, color: '#64748b' }}>Grants: {raceMissing.map((s) => SKILLS.find(x => x.id === s)?.name || s).join(', ')} (will be applied)</div>
+                        )}
+      {raceConflicts.length > 0 && (
+                          <div style={{ fontSize: 12, color: '#64748b' }}>
+                            Conflicts detected: {raceConflicts.map((s) => SKILLS.find(x => x.id === s)?.name || s).join(', ')}. Pick {raceConflicts.length} replacement{raceConflicts.length > 1 ? 's' : ''}:
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 6 }}>
+                              {availableForReplacement.map((sid) => {
+                                const selected = raceReplPicks.includes(sid)
+                                const selectedOther = bgReplPicks.includes(sid)
+                                const atMax = raceReplPicks.length >= raceConflicts.length
+        // Mark as already only if the skill is granted from a source other than this race replacement (ignore manual)
+        const sources = skillSources[sid] || []
+        const hasOtherSource = sources.some((s) => s !== 'race' && s !== 'race-pick' && s !== 'manual')
+                                const already = hasOtherSource && !selected
+                                const disabled = already || selectedOther || (atMax && !selected)
+                                const baseProps: any = {}
+                                if (already) {
+                                  baseProps.style = { background: '#f97316', color: 'white', borderColor: '#f97316' }
+                                }
+                                return (
+                                  <Button
+                                    key={sid}
+                                    size="sm"
+                                    variant={selected ? 'default' : 'outline'}
+                                    disabled={disabled}
+                                    onClick={() => {
+                                      if (already || selectedOther) return
+                                      setRaceReplPicks((prev) => selected
+                                        ? prev.filter((x) => x !== sid)
+                                        : (prev.length < raceConflicts.length ? [...prev, sid] : prev))
+                                      if (selected) removeSkillSource(sid, 'race-pick')
+                                      else addSkillSource(sid, 'race-pick')
+                                    }}
+                                    {...baseProps}
+                                  >{SKILLS.find(x => x.id === sid)?.name || sid}</Button>
+                                )
+                              })}
+                            </div>
+                            <div style={{ marginTop: 6 }}>Selected {raceReplPicks.length} / {raceConflicts.length}</div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Class skill picks */}
+                    {classNeeds.length > 0 && (
+                      <div style={{ display: 'grid', gap: 8 }}>
+                        <div style={{ fontWeight: 600 }}>Class Skills</div>
+                        {classNeeds.map(({ klassId, klassName, need, count, options }) => (
+                          <div key={klassId} style={{ display: 'grid', gap: 6 }}>
+                            <div style={{ fontSize: 12, color: '#64748b' }}>
+                              {klassName}: {need > 0 ? `pick ${need}` : 'complete'}
+                            </div>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            {options.map((sid) => {
+                                const current = classSkillPicks[klassId] || []
+                                const selected = current.includes(sid)
+                                // Treat this class's own grants as selectable (blue), but block if any other source grants it (ignore manual)
+                                const sources = skillSources[sid] || []
+                                const hasOtherSource = sources.some((s) => s !== `class:${klassId}` && s !== 'manual')
+                                const already = hasOtherSource && !selected
+        const atMax = current.length >= count
+                                const disabled = already || (atMax && !selected)
+                                const baseProps: any = {}
+                                if (already) {
+                                  baseProps.style = { background: '#f97316', color: 'white', borderColor: '#f97316' }
+                                }
+                                return (
+                                  <Button
+                                    key={sid}
+                                    size="sm"
+                                    variant={selected ? 'default' : 'outline'}
+                                    disabled={disabled}
+                                    onClick={() => {
+                                      if (already) return
+                    setClassSkillPicks((prev) => {
+                                        const arr = [...(prev[klassId] || [])]
+                                        const nextArr = selected
+                                          ? arr.filter((x) => x !== sid)
+                      : (arr.length < count ? [...arr, sid] : arr)
+                                        return { ...prev, [klassId]: nextArr }
+                                      })
+              if (selected) removeSkillSource(sid, `class:${klassId}`)
+              else addSkillSource(sid, `class:${klassId}`)
+                                    }}
+                                    {...baseProps}
+                                  >{SKILLS.find(x => x.id === sid)?.name || sid}</Button>
+                                )
+                              })}
+                            </div>
+                            <div style={{ fontSize: 12, color: '#64748b' }}>Selected {(classSkillPicks[klassId] || []).length} / {count}</div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <Button size="sm" variant="ghost" onClick={() => {
+                        // Clear local pick state only
+                        setBgReplPicks([]); setRaceReplPicks([]); setClassSkillPicks({})
+                      }}>Reset Selections</Button>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )
+          })()}
+
           {/* Class Feature Choices (appears only when needed) */}
           {pendingSubclassChoices.length ? (
             <Card>
@@ -541,60 +825,165 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
 
           {/* Skills */}
           <Card>
-            <CardHeader><CardTitle><Info size={16} style={{ marginRight: 6 }} />Skills</CardTitle></CardHeader>
+            <CardHeader>
+              <CardTitle><Info size={16} style={{ marginRight: 6 }} />Skills</CardTitle>
+            </CardHeader>
             <CardContent>
-              {/* Sort controls */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                <div style={{ fontSize: 12, color: '#64748b' }}>Sort By</div>
-                <select value={skillSort} onChange={(e) => setSkillSort(e.target.value as any)} style={{ ...inp, width: 240, padding: '6px 10px' }}>
-                  <option value="ability">Ability Score (STR, DEX, ...)</option>
-                  <option value="alpha">Alphabetical</option>
-                  <option value="bonus">Highest Bonus</option>
-                  <option value="proftype">Proficiency Type</option>
-                </select>
+              {/* Tabs */}
+              <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                <Button size="sm" variant={skillTab === 'list' ? 'default' : 'outline'} onClick={() => setSkillTab('list')}>List</Button>
+                <Button size="sm" variant={skillTab === 'sources' ? 'default' : 'outline'} onClick={() => setSkillTab('sources')}>Sources</Button>
               </div>
 
-              {(() => {
-                const fa = finalAbility(abilities, race)
-                const pb = proficiencyBonus(derived.totalLevel)
-                const abilityOrder: AbilityKey[] = ['str', 'dex', 'con', 'int', 'wis', 'cha']
-                const profOrder: ProfType[] = ['none', 'half', 'prof', 'expert']
-                const nextProf = (t?: ProfType): ProfType => (t === 'none' ? 'half' : t === 'half' ? 'prof' : t === 'prof' ? 'expert' : 'none')
-                const items = SKILLS.map((s) => {
-                  const base = mod(fa[s.ability])
-                  const t: ProfType = skillProf[s.id] ?? 'none'
-                  const add = t === 'half' ? Math.floor(pb / 2) : t === 'prof' ? pb : t === 'expert' ? pb * 2 : 0
-                  const total = base + add
-                  return { ...s, base, add, total, t }
-                })
-                items.sort((a, b) => {
-                  if (skillSort === 'alpha') return a.name.localeCompare(b.name)
-                  if (skillSort === 'bonus') return b.total - a.total || a.name.localeCompare(b.name)
-                  if (skillSort === 'proftype') return profOrder.indexOf(a.t) - profOrder.indexOf(b.t) || a.name.localeCompare(b.name)
-                  // ability
-                  return abilityOrder.indexOf(a.ability) - abilityOrder.indexOf(b.ability) || a.name.localeCompare(b.name)
-                })
-                return (
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                    {items.map((s) => (
-                      <div key={s.id} style={{ padding: 8, borderRadius: 10, border: '1px solid #e2e8f0', background: '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                        <div style={{ display: 'grid', gap: 2 }}>
-                          <div style={{ fontWeight: 600 }}>{s.name}</div>
-                          <div style={{ fontSize: 11, color: '#64748b', textTransform: 'uppercase' }}>{s.ability}</div>
-                        </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <Pill>{s.total >= 0 ? `+${s.total}` : s.total}</Pill>
-                          <Button
-                            size="sm"
-                            variant={s.t === 'none' ? 'outline' : 'default'}
-                            onClick={() => setSkillProf((m) => ({ ...m, [s.id]: nextProf(m[s.id] ?? 'none') }))
-                          }>{s.t === 'none' ? 'None' : s.t === 'half' ? 'Half' : s.t === 'prof' ? 'Prof' : 'Expertise'}</Button>
-                        </div>
-                      </div>
-                    ))}
+              {skillTab === 'list' ? (
+                <>
+                  {/* Sort controls */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
+                    <div style={{ fontSize: 12, color: '#64748b' }}>Sort By</div>
+                    <select value={skillSort} onChange={(e) => setSkillSort(e.target.value as any)} style={{ ...inp, width: 240, padding: '6px 10px' }}>
+                      <option value="ability">Ability Score</option>
+                      <option value="alpha">Alphabetical</option>
+                      <option value="bonus">Highest Bonus</option>
+                      <option value="proftype">Proficiency Type</option>
+                    </select>
+                    <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <Button size="sm" variant={skillLayout === 'single' ? 'default' : 'outline'} onClick={() => setSkillLayout('single')} aria-label="Single column" title="Single column">
+                        <List size={16} />
+                      </Button>
+                      <Button size="sm" variant={skillLayout === 'double' ? 'default' : 'outline'} onClick={() => setSkillLayout('double')} aria-label="Two columns" title="Two columns">
+                        <Columns size={16} />
+                      </Button>
+                      <Button size="sm" variant={skillLayout === 'grid' ? 'default' : 'outline'} onClick={() => setSkillLayout('grid')} aria-label="Grid" title="Grid">
+                        <LayoutGrid size={16} />
+                      </Button>
+                    </div>
                   </div>
-                )
-              })()}
+
+                  {(() => {
+                    const fa = finalAbility(abilities, race)
+                    const pb = proficiencyBonus(derived.totalLevel)
+                    // Ability sort order preference (CHA, CON, DEX, INT, STR, WIS)
+                    const abilityOrder: AbilityKey[] = ['cha', 'con', 'dex', 'int', 'str', 'wis']
+                    const profOrder: ProfType[] = ['expert', 'prof', 'half', 'none']
+                    const items = SKILLS.map((s) => {
+                      const base = mod(fa[s.ability])
+                      const t: ProfType = skillProf[s.id] ?? 'none'
+                      const add = t === 'half' ? Math.floor(pb / 2) : t === 'prof' ? pb : t === 'expert' ? pb * 2 : 0
+                      const total = base + add
+                      return { ...s, base, add, total, t }
+                    })
+                    items.sort((a, b) => {
+                      if (skillSort === 'alpha') return a.name.localeCompare(b.name)
+                      if (skillSort === 'bonus') return b.total - a.total || a.name.localeCompare(b.name)
+                      if (skillSort === 'proftype') return profOrder.indexOf(a.t) - profOrder.indexOf(b.t) || a.name.localeCompare(b.name)
+                      // ability
+                      return abilityOrder.indexOf(a.ability) - abilityOrder.indexOf(b.ability) || a.name.localeCompare(b.name)
+                    })
+                    // Compute a consistent card width so all skill names are fully visible on one line
+                    const measure = (font: string, text: string) => {
+                      try {
+                        const canvas = document.createElement('canvas')
+                        const ctx = canvas.getContext('2d')
+                        if (!ctx) return text.length * 8
+                        ctx.font = font
+                        const m = ctx.measureText(text)
+                        return m.width
+                      } catch {
+                        return text.length * 8
+                      }
+                    }
+                    const fontStack = "system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif"
+                    const nameFont = `600 14px ${fontStack}`
+                    const pillFont = `12px ${fontStack}`
+                    const btnFont = `12px ${fontStack}`
+                    const maxNameWidth = Math.max(...SKILLS.map((s) => measure(nameFont, s.name)))
+                    const maxPillTextWidth = Math.max(...items.map((i) => measure(pillFont, i.total >= 0 ? `+${i.total}` : `${i.total}`)))
+                    const pillWidth = Math.ceil(maxPillTextWidth + 16 + 2) // padding 8+8 + borders
+                    const btnLabel = 'Expertise' // longest button label
+                    const btnTextWidth = measure(btnFont, btnLabel)
+                    const btnWidth = Math.ceil(btnTextWidth + 20 + 2) // padding 10+10 + borders
+                    const leftWidth = Math.ceil(maxNameWidth)
+                    const cardWidth = Math.ceil(leftWidth + 8 /* gap L-R */ + pillWidth + 8 /* gap pill-btn */ + btnWidth + 16 /* padding */)
+                    const containerStyle: React.CSSProperties = {
+                      display: 'grid',
+                      gap: 8,
+                      gridTemplateColumns:
+                        skillLayout === 'single'
+                          ? `repeat(1, minmax(${cardWidth}px, 1fr))`
+                          : skillLayout === 'double'
+                          ? `repeat(2, minmax(${cardWidth}px, 1fr))`
+                          : `repeat(auto-fill, ${cardWidth}px)`,
+                    }
+                    const cardBaseStyle: React.CSSProperties = {
+                      padding: 8,
+                      borderRadius: 10,
+                      border: '1px solid #e2e8f0',
+                      background: '#f8fafc',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: 8,
+                      ...(skillLayout === 'grid' ? { width: cardWidth } : {}),
+                    }
+                    // For two-column layout, render items in column-major order:
+                    // left column gets the first half top-to-bottom, right column the second half,
+                    // then interleave per row so CSS grid (row-major) places them correctly.
+                    let displayItems = items
+                    if (skillLayout === 'double') {
+                      const rows = Math.ceil(items.length / 2)
+                      const left = items.slice(0, rows)
+                      const right = items.slice(rows)
+                      const interleaved: typeof items = []
+                      for (let i = 0; i < rows; i++) {
+                        if (left[i]) interleaved.push(left[i])
+                        if (right[i]) interleaved.push(right[i])
+                      }
+                      displayItems = interleaved
+                    }
+                    return (
+                      <div style={containerStyle}>
+                        {displayItems.map((s) => (
+                          <div key={s.id} style={cardBaseStyle}>
+                            <div style={{ display: 'grid', gap: 2 }}>
+                              <div style={{ fontWeight: 600, whiteSpace: 'nowrap' }}>{s.name}</div>
+                              <div style={{ fontSize: 11, color: '#64748b', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>{s.ability}</div>
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, whiteSpace: 'nowrap' }}>
+                              <Pill>{s.total >= 0 ? `+${s.total}` : s.total}</Pill>
+                              <Button
+                                size="sm"
+                                variant={s.t === 'none' ? 'outline' : 'default'}
+                                onClick={() => {
+                                  const hasManual = (skillSources[s.id] || []).includes('manual')
+                                  if (hasManual) {
+                                    removeSkillSource(s.id, 'manual')
+                                  } else {
+                                    addSkillSource(s.id, 'manual')
+                                  }
+                                }}
+                              >{s.t === 'none' ? 'None' : s.t === 'half' ? 'Half' : s.t === 'prof' ? 'Prof' : 'Expertise'}</Button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )
+                  })()}
+                </>
+              ) : null}
+
+              {skillTab === 'sources' ? (
+                <div style={{ display: 'grid', gap: 8 }}>
+                  <div style={{ fontSize: 12, color: '#64748b' }}>Combined node graph showing all skills and their proficiency sources.</div>
+                  <CombinedSourcesGraph
+                    skills={SKILLS.map(s => ({ id: s.id, name: s.name }))}
+                    skillSources={skillSources}
+                    race={race}
+                    raceReplPicks={raceReplPicks}
+                    classes={classes}
+                    background={background}
+                  />
+                </div>
+              ) : null}
             </CardContent>
           </Card>
 
@@ -662,6 +1051,7 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
                     </div>
                   </div>
                 </div>
+                      
               </div>
             </CardContent>
           </Card>
@@ -1218,13 +1608,26 @@ function ClassManager(props: { classes: Array<{ klass: Klass; level: number; sub
 function RaceSelector(props: { value: Race; onChange: (v: Race) => void }) {
   const [showHumanSubs, setShowHumanSubs] = useState(false)
   const [showElfSubs, setShowElfSubs] = useState(false)
+  const [showDwarfSubs, setShowDwarfSubs] = useState(false)
+  const [showHalflingSubs, setShowHalflingSubs] = useState(false)
+  // Subrace buttons use a distinct color scheme to differentiate from parent buttons
+  const subBtnStyle = (selected: boolean): React.CSSProperties =>
+    selected
+      ? { background: '#4f46e5', color: 'white', borderColor: '#4f46e5' } // indigo selected
+      : { borderColor: '#4f46e5', color: '#4f46e5' } // indigo outline
   const humanBase = RACES.find(r => r.id === 'human')!
   const humanVar = RACES.find(r => r.id === 'human-variant')!
   const elfWood = RACES.find(r => r.id === 'elf-wood')!
   const elfHigh = RACES.find(r => r.id === 'elf-high')!
-  const others = RACES.filter(r => !['human', 'human-variant', 'elf-wood', 'elf-high'].includes(r.id))
+  const dwarfHill = RACES.find(r => r.id === 'dwarf-hill')!
+  const dwarfMountain = RACES.find(r => r.id === 'dwarf-mountain')!
+  const halflingLightfoot = RACES.find(r => r.id === 'halfling-lightfoot')!
+  const halflingStout = RACES.find(r => r.id === 'halfling-stout')!
+  const others = RACES.filter(r => !['human', 'human-variant', 'elf-wood', 'elf-high', 'dwarf-hill', 'dwarf-mountain', 'halfling-lightfoot', 'halfling-stout'].includes(r.id))
   const isHumanSelected = props.value.id === 'human' || props.value.id === 'human-variant'
   const isElfSelected = props.value.id === 'elf-wood' || props.value.id === 'elf-high'
+  const isDwarfSelected = props.value.id === 'dwarf-hill' || props.value.id === 'dwarf-mountain'
+  const isHalflingSelected = props.value.id === 'halfling-lightfoot' || props.value.id === 'halfling-stout'
 
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
@@ -1232,8 +1635,8 @@ function RaceSelector(props: { value: Race; onChange: (v: Race) => void }) {
       <Button size="sm" variant={isHumanSelected ? 'default' : 'outline'} onClick={() => setShowHumanSubs((v) => !v)}>Human</Button>
       {showHumanSubs && (
         <>
-          <Button size="sm" variant={props.value.id === 'human' ? 'default' : 'outline'} onClick={() => props.onChange(humanBase)}>Base</Button>
-          <Button size="sm" variant={props.value.id === 'human-variant' ? 'default' : 'outline'} onClick={() => props.onChange(humanVar)}>Variant</Button>
+          <Button size="sm" variant={props.value.id === 'human' ? 'default' : 'outline'} onClick={() => props.onChange(humanBase)} style={subBtnStyle(props.value.id === 'human')}>Base</Button>
+          <Button size="sm" variant={props.value.id === 'human-variant' ? 'default' : 'outline'} onClick={() => props.onChange(humanVar)} style={subBtnStyle(props.value.id === 'human-variant')}>Variant</Button>
         </>
       )}
 
@@ -1241,8 +1644,26 @@ function RaceSelector(props: { value: Race; onChange: (v: Race) => void }) {
       <Button size="sm" variant={isElfSelected ? 'default' : 'outline'} onClick={() => setShowElfSubs((v) => !v)}>Elf</Button>
       {showElfSubs && (
         <>
-          <Button size="sm" variant={props.value.id === 'elf-wood' ? 'default' : 'outline'} onClick={() => props.onChange(elfWood)}>Wood</Button>
-          <Button size="sm" variant={props.value.id === 'elf-high' ? 'default' : 'outline'} onClick={() => props.onChange(elfHigh)}>High</Button>
+          <Button size="sm" variant={props.value.id === 'elf-wood' ? 'default' : 'outline'} onClick={() => props.onChange(elfWood)} style={subBtnStyle(props.value.id === 'elf-wood')}>Wood</Button>
+          <Button size="sm" variant={props.value.id === 'elf-high' ? 'default' : 'outline'} onClick={() => props.onChange(elfHigh)} style={subBtnStyle(props.value.id === 'elf-high')}>High</Button>
+        </>
+      )}
+
+      {/* Dwarf group button */}
+      <Button size="sm" variant={isDwarfSelected ? 'default' : 'outline'} onClick={() => setShowDwarfSubs((v) => !v)}>Dwarf</Button>
+      {showDwarfSubs && (
+        <>
+          <Button size="sm" variant={props.value.id === 'dwarf-hill' ? 'default' : 'outline'} onClick={() => props.onChange(dwarfHill)} style={subBtnStyle(props.value.id === 'dwarf-hill')}>Hill</Button>
+          <Button size="sm" variant={props.value.id === 'dwarf-mountain' ? 'default' : 'outline'} onClick={() => props.onChange(dwarfMountain)} style={subBtnStyle(props.value.id === 'dwarf-mountain')}>Mountain</Button>
+        </>
+      )}
+
+      {/* Halfling group button */}
+      <Button size="sm" variant={isHalflingSelected ? 'default' : 'outline'} onClick={() => setShowHalflingSubs((v) => !v)}>Halfling</Button>
+      {showHalflingSubs && (
+        <>
+          <Button size="sm" variant={props.value.id === 'halfling-lightfoot' ? 'default' : 'outline'} onClick={() => props.onChange(halflingLightfoot)} style={subBtnStyle(props.value.id === 'halfling-lightfoot')}>Lightfoot</Button>
+          <Button size="sm" variant={props.value.id === 'halfling-stout' ? 'default' : 'outline'} onClick={() => props.onChange(halflingStout)} style={subBtnStyle(props.value.id === 'halfling-stout')}>Stout</Button>
         </>
       )}
 
@@ -1250,6 +1671,266 @@ function RaceSelector(props: { value: Race; onChange: (v: Race) => void }) {
       {others.map((r) => (
         <Button key={r.id} size="sm" variant={props.value.id === r.id ? 'default' : 'outline'} onClick={() => props.onChange(r)}>{r.name}</Button>
       ))}
+    </div>
+  )
+}
+
+function SkillSourceGraph({ name, sources }: { name: string; sources: string[] }) {
+  // Normalize and label sources
+  const labelFor = (src: string) => {
+    if (src === 'bg') return 'Background'
+    if (src === 'race') return 'Race'
+    if (src === 'race-pick') return 'Race (replacement)'
+    if (src === 'manual') return 'Manual'
+    if (src.startsWith('class:')) {
+      const id = src.split(':')[1]
+      const cname = CLASSES.find(c => c.id === id)?.name || id
+      return `Class: ${cname}`
+    }
+    return src
+  }
+  const uniq = Array.from(new Set(sources))
+  const width = 360
+  const srcCount = Math.max(1, uniq.length)
+  const height = 80 + (srcCount > 3 ? Math.ceil((srcCount - 3) / 3) * 26 : 0)
+  const centerX = width / 2
+  const skillY = 20
+  // Layout sources in a row beneath
+  const rowY = 56
+  const perRow = 3
+  const colW = width / Math.min(perRow, srcCount)
+  const nodes = uniq.map((src, i) => {
+    const row = Math.floor(i / perRow)
+    const col = i % perRow
+    const cx = srcCount <= perRow ? (colW * (col + 0.5)) : ((width / perRow) * (col + 0.5))
+    const cy = rowY + row * 26
+    return { id: src, label: labelFor(src), x: cx, y: cy }
+  })
+  return (
+    <div style={{ width: '100%', overflowX: 'auto' }}>
+      <svg width={width} height={height} style={{ display: 'block' }}>
+        {/* Skill node */}
+        <g>
+          <rect x={centerX - 60} y={skillY - 14} width={120} height={28} rx={8} ry={8} fill="#0ea5e9" stroke="#0284c7" />
+          <text x={centerX} y={skillY + 4} textAnchor="middle" fontSize="12" fill="#fff">{name}</text>
+        </g>
+        {/* Edges and source nodes */}
+        {nodes.map((n) => (
+          <g key={n.id}>
+            <line x1={centerX} y1={skillY + 14} x2={n.x} y2={n.y - 12} stroke="#94a3b8" strokeWidth={1.5} />
+            <rect x={n.x - 70} y={n.y - 12} width={140} height={24} rx={6} ry={6} fill="#f1f5f9" stroke="#e2e8f0" />
+            <text x={n.x} y={n.y + 4} textAnchor="middle" fontSize="11" fill="#0f172a">{n.label}</text>
+          </g>
+        ))}
+        {nodes.length === 0 && (
+          <text x={centerX} y={rowY} textAnchor="middle" fontSize="12" fill="#94a3b8">No current sources</text>
+        )}
+      </svg>
+    </div>
+  )
+}
+
+function CombinedSourcesGraph({ skills, skillSources, race, raceReplPicks, classes, background }: { skills: Array<{ id: string; name: string }>; skillSources: Record<string, string[]>; race?: Race; raceReplPicks?: string[]; classes?: Array<{ klass: Klass; level: number; subclass?: Subclass }>; background?: Background }) {
+  // Determine availability from classes and race
+  const classAvailSkillIds = new Set<string>((classes || []).flatMap((c) => CLASS_SKILL_CHOICES[c.klass.id]?.options || []))
+  const skillHasSources = (id: string) => (skillSources[id] || []).length > 0
+  // Race replacement availability only when current race grants a skill that conflicts with another non-race source
+  const raceGrantedSkillIds = race ? (race.traits || []).flatMap((t) => RACE_TRAIT_SKILLS[t.id] || []) : []
+  const raceConflicts = raceGrantedSkillIds.filter((sid) => (skillSources[sid] || []).some((s) => s !== 'race' && s !== 'race-pick' && s !== 'manual'))
+  const isEligibleForRaceReplacement = (id: string) => {
+    if (!race || raceConflicts.length === 0) return false
+    const srcs = skillSources[id] || []
+    const hasOther = srcs.some((s) => s !== 'race' && s !== 'race-pick' && s !== 'manual')
+    return !hasOther
+  }
+  // Build included skill set: with sources OR available via class OR available via race replacement
+  const includedSkillIds = new Set<string>()
+  skills.forEach((s) => {
+    if (skillHasSources(s.id) || classAvailSkillIds.has(s.id) || isEligibleForRaceReplacement(s.id)) includedSkillIds.add(s.id)
+  })
+  if (includedSkillIds.size === 0) {
+    return <div style={{ fontSize: 12, color: '#94a3b8' }}>No skills currently have sources or availability.</div>
+  }
+  const isChoice = (src: string) => src === 'manual' || src === 'race-pick' || src.startsWith('class:')
+  // Gather unique source keys from skills that have sources, split by type
+  const allKeys = Array.from(new Set(skills.filter((s) => skillHasSources(s.id)).flatMap((s) => (skillSources[s.id] || []))))
+  const fixedKeys = allKeys.filter((k) => !isChoice(k))
+  const choiceKeys = allKeys.filter((k) => isChoice(k))
+  const labelFor = (src: string) => {
+    if (src === 'bg') return `Background${background?.name ? `: ${background.name}` : ''}`
+    if (src === 'race') return `Race${race?.name ? `: ${race.name}` : ''}`
+    if (src === 'race-pick') return 'Race (replacement)'
+    if (src === 'manual') return 'Manual'
+    if (src.startsWith('class:')) {
+      const id = src.split(':')[1]
+      const cname = CLASSES.find(c => c.id === id)?.name || id
+      return `Class: ${cname}`
+    }
+    return src
+  }
+
+  // Layout constants (three columns: fixed sources | skills | choice sources)
+  const padding = 16
+  const colGap = 360 // further increased spacing between columns for clearer edges
+  const rowGap = 32
+  const srcW = 200   // wider source/choice nodes
+  const skillW = 200 // wider skill nodes
+  const leftX = padding + srcW / 2
+  const midX = leftX + colGap
+  const rightX = midX + colGap
+
+  // Node centers
+  // Ensure Race appears on the left if race replacement availability exists
+  const fixedKeysAug = [...fixedKeys]
+  if (race && raceConflicts.length > 0 && !fixedKeysAug.includes('race')) fixedKeysAug.push('race')
+  const leftFixedNodes = fixedKeysAug.map((key, i) => ({ id: key, label: labelFor(key), x: leftX, y: padding + i * rowGap }))
+  const classAvailKeys = (classes || [])
+    .filter((c) => CLASS_SKILL_CHOICES[c.klass.id])
+    .map((c) => `class:${c.klass.id}`)
+  const leftClassNodes = classAvailKeys.map((key, i) => ({ id: key, label: labelFor(key), x: leftX, y: padding + (leftFixedNodes.length + i) * rowGap }))
+  const leftNodes = [...leftFixedNodes, ...leftClassNodes]
+  // Barycentric ordering: compute neighbor indices on the left for each included skill
+  const leftIndex: Record<string, number> = {}
+  leftNodes.forEach((n, i) => { leftIndex[n.id] = i })
+  const midSkills = skills.filter((s) => includedSkillIds.has(s.id))
+  const neighborIdsForSkill = (sid: string): string[] => {
+    const ids: string[] = []
+    // Actual fixed sources for this skill
+    ;(skillSources[sid] || []).forEach((src) => { if (!isChoice(src)) ids.push(src) })
+    // Class availability
+    ;(classes || []).forEach((c) => {
+      const spec = CLASS_SKILL_CHOICES[c.klass.id]
+      if (spec && spec.options.includes(sid)) ids.push(`class:${c.klass.id}`)
+    })
+    // Race availability via replacement
+    if (isEligibleForRaceReplacement(sid)) ids.push('race')
+    return Array.from(new Set(ids))
+  }
+  const midWithKey = midSkills.map((s, i) => {
+    const neigh = neighborIdsForSkill(s.id).map((nid) => leftIndex[nid]).filter((v) => typeof v === 'number') as number[]
+    const avg = neigh.length ? (neigh.reduce((a, b) => a + b, 0) / neigh.length) : i
+    return { s, key: avg }
+  })
+  midWithKey.sort((a, b) => a.key - b.key || a.s.name.localeCompare(b.s.name))
+  const midNodes = midWithKey.map((o, i) => ({ id: o.s.id, label: o.s.name, x: midX, y: padding + i * rowGap }))
+  // Order right (choice) nodes by the average index of connected skills (actual edges only)
+  const midIndex: Record<string, number> = {}
+  midNodes.forEach((n, i) => { midIndex[n.id] = i })
+  const rightWithKey = choiceKeys.map((key, i) => {
+    const connected = midNodes.filter((mn) => (skillSources[mn.id] || []).includes(key)).map((mn) => midIndex[mn.id])
+    const avg = connected.length ? (connected.reduce((a, b) => a + b, 0) / connected.length) : i
+    return { key, avg }
+  })
+  rightWithKey.sort((a, b) => a.avg - b.avg || labelFor(a.key).localeCompare(labelFor(b.key)))
+  const rightNodes = rightWithKey.map((o, i) => ({ id: o.key, label: labelFor(o.key), x: rightX, y: padding + i * rowGap }))
+
+  // Edges: left->mid for fixed sources, mid->right for choice sources
+  const edgesLeft: Array<{ sx: number; sy: number; tx: number; ty: number; key: string }> = []
+  const edgesRight: Array<{ sx: number; sy: number; tx: number; ty: number; key: string }> = []
+  midNodes.forEach((mn) => {
+    const srcs = skillSources[mn.id] || []
+    srcs.forEach((k) => {
+      if (fixedKeys.includes(k)) {
+        const ln = leftNodes.find(n => n.id === k)
+        if (ln) edgesLeft.push({ sx: ln.x + srcW / 2, sy: ln.y, tx: mn.x - skillW / 2, ty: mn.y, key: `${k}->${mn.id}` })
+      } else if (choiceKeys.includes(k)) {
+        const rn = rightNodes.find(n => n.id === k)
+        if (rn) edgesRight.push({ sx: mn.x + skillW / 2, sy: mn.y, tx: rn.x - srcW / 2, ty: rn.y, key: `${mn.id}->${k}` })
+      }
+    })
+  })
+
+  // Size the canvas
+  const width = rightX + srcW / 2 + padding
+  const height = Math.max(
+    (leftNodes.length ? leftNodes[leftNodes.length - 1].y : 0),
+    (midNodes.length ? midNodes[midNodes.length - 1].y : 0),
+    (rightNodes.length ? rightNodes[rightNodes.length - 1].y : 0)
+  ) + padding
+
+  // Optional: dotted edges from Race (left) to skills that are available as race replacements
+  const dottedEdgesLeft: Array<{ sx: number; sy: number; tx: number; ty: number; key: string }> = []
+  if (race) {
+    const raceSkillIds = (race.traits || []).flatMap((t) => RACE_TRAIT_SKILLS[t.id] || [])
+    const raceConflicts = raceSkillIds.filter((sid) => (skillSources[sid] || []).some((s) => s !== 'race' && s !== 'race-pick' && s !== 'manual'))
+    const raceNode = leftNodes.find((n) => n.id === 'race')
+    if (raceNode && raceConflicts.length > 0) {
+      midNodes.forEach((mn) => {
+        const srcs = skillSources[mn.id] || []
+        const hasOtherSource = srcs.some((s) => s !== 'race' && s !== 'race-pick' && s !== 'manual')
+        if (!hasOtherSource) {
+          dottedEdgesLeft.push({ sx: raceNode.x + srcW / 2, sy: raceNode.y, tx: mn.x - skillW / 2, ty: mn.y, key: `race~avail->${mn.id}` })
+        }
+      })
+    }
+  }
+  // Dotted edges from Class nodes (left) to their selectable skills to indicate availability
+  if (classes && classes.length) {
+    classes.forEach((c) => {
+      const clsKey = `class:${c.klass.id}`
+      const clsNode = leftNodes.find((n) => n.id === clsKey)
+      const spec = CLASS_SKILL_CHOICES[c.klass.id]
+      if (!clsNode || !spec) return
+      spec.options.forEach((sid) => {
+        const mid = midNodes.find((mn) => mn.id === sid)
+        if (!mid) return
+        // draw dotted availability edge even if currently not selected by class
+        dottedEdgesLeft.push({ sx: clsNode.x + srcW / 2, sy: clsNode.y, tx: mid.x - skillW / 2, ty: mid.y, key: `${clsKey}~avail->${sid}` })
+      })
+    })
+  }
+
+  return (
+    <div style={{ width: '100%', overflowX: 'auto' }}>
+      <svg width={width} height={height} style={{ display: 'block', background: '#ffffff' }}>
+        {/* Edges left->mid */}
+        {edgesLeft.map((e) => (
+          <path key={e.key} d={`M ${e.sx} ${e.sy} C ${e.sx + 40} ${e.sy}, ${e.tx - 40} ${e.ty}, ${e.tx} ${e.ty}`} stroke="#94a3b8" strokeWidth={1.5} fill="none" />
+        ))}
+        {/* Dotted availability edges from Race to eligible skills (left->mid) */}
+        {dottedEdgesLeft.map((e) => (
+          <path key={e.key} d={`M ${e.sx} ${e.sy} C ${e.sx + 40} ${e.sy}, ${e.tx - 40} ${e.ty}, ${e.tx} ${e.ty}`} stroke="#cbd5e1" strokeWidth={1.5} fill="none" strokeDasharray="4,4" />
+        ))}
+        {/* Edges mid->right */}
+        {edgesRight.map((e) => (
+          <path key={e.key} d={`M ${e.sx} ${e.sy} C ${e.sx + 40} ${e.sy}, ${e.tx - 40} ${e.ty}, ${e.tx} ${e.ty}`} stroke="#94a3b8" strokeWidth={1.5} fill="none" />
+        ))}
+        {/* Left fixed source nodes */}
+        {leftNodes.map((n) => (
+          <g key={n.id}>
+            <rect x={n.x - srcW / 2} y={n.y - 12} width={srcW} height={24} rx={6} ry={6} fill="#f1f5f9" stroke="#e2e8f0" />
+            <text x={n.x} y={n.y + 4} textAnchor="middle" fontSize="11" fill="#0f172a">{n.label}</text>
+          </g>
+        ))}
+        {/* Middle skill nodes */}
+        {midNodes.map((n) => {
+          const cnt = (skillSources[n.id] || []).length
+          const isActive = cnt > 0
+          const badgeR = 9
+          const badgeCx = n.x - skillW / 2 - badgeR - 6
+          const badgeCy = n.y
+          const nodeFill = isActive ? '#0ea5e9' : '#f1f5f9'
+          const nodeStroke = isActive ? '#0284c7' : '#e2e8f0'
+          const labelFill = isActive ? '#ffffff' : '#0f172a'
+          return (
+            <g key={n.id}>
+              {/* Count badge */}
+              <circle cx={badgeCx} cy={badgeCy} r={badgeR} fill="#e2e8f0" stroke="#cbd5e1" />
+              <text x={badgeCx} y={badgeCy + 3} textAnchor="middle" fontSize="10" fill="#0f172a" fontWeight="600">{cnt}</text>
+              {/* Skill node */}
+              <rect x={n.x - skillW / 2} y={n.y - 12} width={skillW} height={24} rx={6} ry={6} fill={nodeFill} stroke={nodeStroke} />
+              <text x={n.x} y={n.y + 4} textAnchor="middle" fontSize="11" fill={labelFill}>{n.label}</text>
+            </g>
+          )
+        })}
+        {/* Right choice-based source nodes */}
+        {rightNodes.map((n) => (
+          <g key={n.id}>
+            <rect x={n.x - srcW / 2} y={n.y - 12} width={srcW} height={24} rx={6} ry={6} fill="#f1f5f9" stroke="#e2e8f0" />
+            <text x={n.x} y={n.y + 4} textAnchor="middle" fontSize="11" fill="#0f172a">{n.label}</text>
+          </g>
+        ))}
+      </svg>
     </div>
   )
 }
