@@ -28,6 +28,8 @@ type Klass = {
   weapons: string[]
   grants?: { subactions?: string[] }
   level1?: Array<{ name: string; text: string }>
+  // Optional richer feature map by level; if provided, render all features up to the class level
+  featuresByLevel?: Record<number, Array<{ name: string; text: string }>>
   acFormula?: (a: { armor: string | 'none'; dexMod: number; conMod: number }) => number | undefined
   saves?: AbilityKey[]
   subclasses?: Subclass[]
@@ -38,13 +40,41 @@ type Equipment =
   | { id: string; name: string; type: 'shield'; ac?: number; hands?: number; tags?: string[]; grants?: string[] }
   | { id: string; name: string; type: 'armor'; ac: number; dexMax: number; reqStr?: number; tags?: string[] }
 
+// Feats (demo)
+type Feat = { id: string; name: string; text: string }
+const FEATS: Feat[] = [
+  { id: 'gwm', name: 'Great Weapon Master', text: 'Power attacks with heavy weapons; bonus attack on crit/kill.' },
+  { id: 'ss', name: 'Sharpshooter', text: 'Long‑range shots without disadvantage; ignore cover; power shot.' },
+  { id: 'pam', name: 'Polearm Master', text: 'Bonus attack with polearms; opportunity on entering reach.' },
+  { id: 'cbe', name: 'Crossbow Expert', text: 'Ignore loading; no disadvantage in melee; bonus hand crossbow attack.' },
+  { id: 'alert', name: 'Alert', text: '+5 initiative; can’t be surprised while conscious; hidden foes don’t gain advantage.' },
+  { id: 'tough', name: 'Tough', text: 'Increase hit points by 2 per level.' },
+  { id: 'prodigy', name: 'Prodigy', text: 'Gain proficiency in one skill; if already proficient, gain expertise (demo).'},
+]
+
 const RACES: Race[] = [
   { id: 'human', name: 'Human (Base)', asis: { str: 1, dex: 1, con: 1, int: 1, wis: 1, cha: 1 }, speed: 30, traits: [ { id: 'versatile', name: 'Versatile', text: '+1 to all ability scores.' } ] },
   { id: 'human-variant', name: 'Human (Variant)', asis: { str: 1, dex: 1 }, speed: 30, traits: [ { id: 'adaptable', name: 'Adaptable', text: '+1 to two ability scores (demo variant).' } ] },
-  { id: 'elf-wood', name: 'Elf (Wood)', asis: { dex: 2, wis: 1 }, speed: 35, traits: [ { id: 'darkvision', name: 'Darkvision', text: 'See in dim light 60 ft.' }, { id: 'keen', name: 'Keen Senses', text: 'Proficiency in Perception.' } ] },
-  { id: 'elf-high', name: 'Elf (High)', asis: { dex: 2, int: 1 }, speed: 30, traits: [ { id: 'darkvision', name: 'Darkvision', text: 'See in dim light 60 ft.' }, { id: 'keen', name: 'Keen Senses', text: 'Proficiency in Perception.' } ] },
-  { id: 'dwarf-hill', name: 'Dwarf (Hill)', asis: { con: 2, wis: 1 }, speed: 25, traits: [ { id: 'darkvision', name: 'Darkvision', text: 'See in dim light 60 ft.' }, { id: 'resilience', name: 'Dwarven Resilience', text: 'Advantage on saves vs. poison.' } ] },
-  { id: 'dwarf-mountain', name: 'Dwarf (Mountain)', asis: { con: 2, str: 2 }, speed: 25, traits: [ { id: 'darkvision', name: 'Darkvision', text: 'See in dim light 60 ft.' }, { id: 'armor-training', name: 'Dwarven Armor Training', text: 'Proficiency with light and medium armor.' } ] },
+  // Elves
+  { id: 'elf-wood', name: 'Elf (Wood)', asis: { dex: 2, wis: 1 }, speed: 35, traits: [
+    { id: 'darkvision', name: 'Darkvision', text: 'See in dim light 60 ft.' },
+    { id: 'keen', name: 'Keen Senses', text: 'Proficiency in Perception.' },
+    { id: 'fey-ancestry', name: 'Fey Ancestry', text: 'Advantage on saves against being charmed; magic can’t put you to sleep.' },
+  ] },
+  { id: 'elf-high', name: 'Elf (High)', asis: { dex: 2, int: 1 }, speed: 30, traits: [
+    { id: 'darkvision', name: 'Darkvision', text: 'See in dim light 60 ft.' },
+    { id: 'keen', name: 'Keen Senses', text: 'Proficiency in Perception.' },
+    { id: 'fey-ancestry', name: 'Fey Ancestry', text: 'Advantage on saves against being charmed; magic can’t put you to sleep.' },
+  ] },
+  // Dwarves
+  { id: 'dwarf-hill', name: 'Dwarf (Hill)', asis: { con: 2, wis: 1 }, speed: 25, traits: [
+    { id: 'darkvision', name: 'Darkvision', text: 'See in dim light 60 ft.' },
+    { id: 'dwarven-resilience', name: 'Dwarven Resilience', text: 'Advantage on saving throws against poison, and resistance to poison damage (demo flavor).' },
+  ] },
+  { id: 'dwarf-mountain', name: 'Dwarf (Mountain)', asis: { con: 2, str: 2 }, speed: 25, traits: [
+    { id: 'darkvision', name: 'Darkvision', text: 'See in dim light 60 ft.' },
+    { id: 'dwarven-resilience', name: 'Dwarven Resilience', text: 'Advantage on saving throws against poison, and resistance to poison damage (demo flavor).' },
+  ] },
   { id: 'halfling-lightfoot', name: 'Halfling (Lightfoot)', asis: { dex: 2, cha: 1 }, speed: 25, traits: [ { id: 'lucky', name: 'Lucky', text: 'Reroll 1s on attack, ability, or save rolls (demo flavor).' }, { id: 'brave', name: 'Brave', text: 'Advantage on saves vs. fear.' } ] },
   { id: 'halfling-stout', name: 'Halfling (Stout)', asis: { dex: 2, con: 1 }, speed: 25, traits: [ { id: 'lucky', name: 'Lucky', text: 'Reroll 1s on attack, ability, or save rolls (demo flavor).' }, { id: 'brave', name: 'Brave', text: 'Advantage on saves vs. fear.' }, { id: 'stout-resilience', name: 'Stout Resilience', text: 'Advantage on saves vs. poison (demo flavor).' } ] },
   { id: 'tiefling', name: 'Tiefling', asis: { cha: 2, int: 1 }, speed: 30, traits: [ { id: 'darkvision', name: 'Darkvision', text: 'See in dim light 60 ft.' }, { id: 'hellish-resistance', name: 'Hellish Resistance', text: 'Resistance to fire damage.' } ] },
@@ -61,14 +91,162 @@ const CLASSES: Klass[] = [
     armor: ['light', 'medium', 'shields'],
     weapons: ['simple', 'martial'],
     grants: { subactions: ['Rage', 'Reckless Attack'] },
-    level1: [
-      { name: 'Rage', text: '+2 damage, advantage on STR checks; uses/long rest.' },
-      { name: 'Unarmored Defense', text: 'AC = 10 + DEX + CON when no armor; shield allowed.' },
-    ],
+    featuresByLevel: {
+      1: [
+        { name: 'Rage', text: '+2 damage, advantage on STR checks; uses/long rest.' },
+        { name: 'Unarmored Defense', text: 'AC = 10 + DEX + CON when no armor; shield allowed.' },
+      ],
+      2: [
+        { name: 'Reckless Attack', text: 'Gain advantage on melee STR attacks this turn; attacks against you have advantage until your next turn.' },
+        { name: 'Danger Sense', text: 'Advantage on DEX saves vs. effects you can see.' },
+      ],
+      3: [
+        { name: 'Primal Path', text: 'Choose a subclass and gain its level 3 features.' },
+      ],
+      4: [
+        { name: 'Ability Score Improvement', text: '+2 to one ability or +1 to two abilities (demo text).' },
+      ],
+      5: [
+        { name: 'Extra Attack', text: 'Attack twice, instead of once, whenever you take the Attack action.' },
+        { name: 'Fast Movement', text: 'Your speed increases by 10 ft. while not wearing heavy armor.' },
+      ],
+    },
     acFormula: (a) => (a.armor === 'none' ? 10 + a.dexMod + a.conMod : undefined),
     saves: ['str', 'con'],
     subclasses: [
       { id: 'berserker', name: 'Path of the Berserker', unlockLevel: 3, grants: { subactions: ['Frenzy'] } },
+    ],
+  },
+  {
+    id: 'ranger',
+    name: 'Ranger',
+    hitDie: 10,
+    armor: ['light', 'medium', 'shields'],
+    weapons: ['simple', 'martial'],
+    grants: { subactions: ['Cast Spell'] },
+    featuresByLevel: {
+      1: [
+        { name: 'Favored Enemy', text: 'You have significant experience studying, tracking, and hunting a certain type of enemy.' },
+        { name: 'Natural Explorer', text: 'You are particularly familiar with one type of natural environment and adept at traveling and surviving in such regions.' },
+      ],
+      2: [
+        { name: 'Fighting Style', text: 'Choose a combat style to hone your martial prowess.' },
+        { name: 'Spellcasting', text: 'WIS‑based spellcasting (half‑caster). Gains 1st‑level spells at level 2.' },
+      ],
+      3: [
+        { name: 'Ranger Archetype', text: 'Choose an archetype and gain its features.' },
+      ],
+      4: [
+        { name: 'Ability Score Improvement', text: '+2 to one ability or +1 to two abilities (demo text).' },
+      ],
+      5: [
+        { name: 'Extra Attack', text: 'Attack twice, instead of once, whenever you take the Attack action.' },
+      ],
+    },
+    saves: ['str', 'dex'],
+    subclasses: [
+      { id: 'hunter', name: 'Hunter', unlockLevel: 3 },
+      { id: 'beast-master', name: 'Beast Master', unlockLevel: 3 },
+    ],
+  },
+  {
+    id: 'rogue',
+    name: 'Rogue',
+    hitDie: 8,
+    armor: ['light'],
+    weapons: ['simple', 'hand-crossbow', 'longsword', 'rapier', 'shortsword'],
+    featuresByLevel: {
+      1: [
+        { name: 'Sneak Attack', text: 'Deal extra damage once per turn when you have advantage or an ally is adjacent.' },
+        { name: 'Thieves’ Cant', text: 'Secret mix of dialect, jargon, and code that allows you to hide messages.' },
+        { name: 'Expertise', text: 'Choose two skills; double proficiency bonus for them.' },
+      ],
+      2: [
+        { name: 'Cunning Action', text: 'Dash, Disengage, or Hide as a bonus action.' },
+      ],
+      3: [
+        { name: 'Roguish Archetype', text: 'Choose an archetype and gain its features.' },
+      ],
+      4: [
+        { name: 'Ability Score Improvement', text: '+2 to one ability or +1 to two abilities (demo text).' },
+      ],
+      5: [
+        { name: 'Uncanny Dodge', text: 'Use your reaction to halve the damage from an attacker you can see.' },
+      ],
+    },
+    saves: ['dex', 'int'],
+    subclasses: [
+      { id: 'thief', name: 'Thief', unlockLevel: 3 },
+      { id: 'assassin', name: 'Assassin', unlockLevel: 3 },
+      { id: 'arcane-trickster', name: 'Arcane Trickster', unlockLevel: 3 },
+    ],
+  },
+  {
+    id: 'monk',
+    name: 'Monk',
+    hitDie: 8,
+    armor: [],
+    weapons: ['simple', 'shortswords'],
+    grants: { subactions: ['Flurry of Blows', 'Patient Defense', 'Step of the Wind'] },
+    featuresByLevel: {
+      1: [
+        { name: 'Unarmored Defense', text: 'AC = 10 + DEX + WIS while not wearing armor or a shield.' },
+        { name: 'Martial Arts', text: 'Use DEX for unarmed/monk weapon attacks; bonus unarmed strike.' },
+      ],
+      2: [
+        { name: 'Ki', text: 'Fuel abilities like Flurry of Blows, Patient Defense, Step of the Wind.' },
+        { name: 'Unarmored Movement', text: '+10 ft. movement speed while unarmored.' },
+      ],
+      3: [
+        { name: 'Monastic Tradition', text: 'Choose a subclass (tradition) and gain its level 3 features.' },
+        { name: 'Deflect Missiles', text: 'Reduce ranged weapon damage; catch/throw sometimes.' },
+      ],
+      4: [
+        { name: 'Ability Score Improvement', text: '+2 to one ability or +1 to two abilities (demo text).' },
+        { name: 'Slow Fall', text: 'Reduce falling damage by 5 × monk level.' },
+      ],
+      5: [
+        { name: 'Extra Attack', text: 'Attack twice when you take the Attack action.' },
+        { name: 'Stunning Strike', text: 'On a hit, spend ki to stun a creature that fails a CON save.' },
+      ],
+    },
+    saves: ['str', 'dex'],
+    subclasses: [
+      { id: 'open-hand', name: 'Way of the Open Hand', unlockLevel: 3, grants: { subactions: [] } },
+      { id: 'shadow', name: 'Way of Shadow', unlockLevel: 3, grants: { subactions: [] } },
+    ],
+  },
+  {
+    id: 'paladin',
+    name: 'Paladin',
+    hitDie: 10,
+    armor: ['all', 'shields'],
+    weapons: ['simple', 'martial'],
+    grants: { subactions: ['Divine Smite'] },
+    featuresByLevel: {
+      1: [
+        { name: 'Divine Sense', text: 'Detect celestials, fiends, and undead (limited uses).' },
+        { name: 'Lay on Hands', text: 'Pool of healing equal to 5 × paladin level.' },
+      ],
+      2: [
+        { name: 'Fighting Style', text: 'Choose a combat style for a passive benefit.' },
+        { name: 'Spellcasting', text: 'CHA‑based half‑caster; gains 1st‑level spell slots.' },
+        { name: 'Divine Smite', text: 'Expend a spell slot to deal radiant damage on a hit.' },
+      ],
+      3: [
+        { name: 'Sacred Oath', text: 'Swear an oath (subclass) and gain Channel Divinity options.' },
+      ],
+      4: [
+        { name: 'Ability Score Improvement', text: '+2 to one ability or +1 to two abilities (demo text).' },
+      ],
+      5: [
+        { name: 'Extra Attack', text: 'Attack twice, instead of once, whenever you take the Attack action.' },
+      ],
+    },
+    saves: ['wis', 'cha'],
+    subclasses: [
+      { id: 'oath-devotion', name: 'Oath of Devotion', unlockLevel: 3, grants: { subactions: ['Channel Divinity (Devotion)'] } },
+      { id: 'oath-vengeance', name: 'Oath of Vengeance', unlockLevel: 3, grants: { subactions: ['Channel Divinity (Vengeance)'] } },
     ],
   },
   {
@@ -78,13 +256,118 @@ const CLASSES: Klass[] = [
     armor: ['all', 'shields'],
     weapons: ['simple', 'martial'],
     grants: { subactions: ['Second Wind'] },
-    level1: [
-      { name: 'Second Wind', text: '1d10 + level self‑heal, 1/short rest.' },
-      { name: 'Fighting Style', text: '+2 to hit with archery or +1 AC with defense, etc.' },
-    ],
+    featuresByLevel: {
+      1: [
+        { name: 'Second Wind', text: '1d10 + level self‑heal, 1/short rest.' },
+        { name: 'Fighting Style', text: 'Choose a combat style for a passive benefit.' },
+      ],
+      2: [
+        { name: 'Action Surge', text: 'Take one additional action on your turn, 1/short rest.' },
+      ],
+      3: [
+        { name: 'Martial Archetype', text: 'Choose a subclass and gain its level 3 features.' },
+      ],
+      4: [
+        { name: 'Ability Score Improvement', text: '+2 to one ability or +1 to two abilities (demo text).' },
+      ],
+      5: [
+        { name: 'Extra Attack', text: 'Attack twice, instead of once, whenever you take the Attack action.' },
+      ],
+    },
     saves: ['str', 'con'],
     subclasses: [
       { id: 'champion', name: 'Champion', unlockLevel: 3, grants: { subactions: ['Improved Critical'] } },
+    ],
+  },
+  {
+    id: 'bard',
+    name: 'Bard',
+    hitDie: 8,
+    armor: ['light'],
+    weapons: ['simple', 'hand crossbows', 'longswords', 'rapiers', 'shortswords'],
+    grants: { subactions: ['Cast Spell', 'Bardic Inspiration'] },
+    featuresByLevel: {
+      1: [
+        { name: 'Spellcasting', text: 'CHA‑based spellcasting. Cantrips & 1st‑level slots.' },
+        { name: 'Bardic Inspiration (d6)', text: 'As a bonus action, give a creature a d6 inspiration die (CHA uses/long rest).' },
+      ],
+      2: [
+        { name: 'Jack of All Trades', text: 'Add half your proficiency bonus to ability checks you are not proficient in.' },
+        { name: 'Song of Rest (d6)', text: 'During a short rest, allies who hear your performance regain extra 1d6 HP.' },
+      ],
+      3: [
+        { name: 'Bard College', text: 'Choose a subclass and gain its level 3 features.' },
+        { name: 'Expertise', text: 'Choose two skills you are proficient in; your proficiency bonus is doubled for them.' },
+      ],
+      4: [
+        { name: 'Ability Score Improvement', text: '+2 to one ability or +1 to two abilities (demo text).' },
+      ],
+      5: [
+        { name: 'Font of Inspiration', text: 'Regain all uses of Bardic Inspiration on a short rest.' },
+      ],
+    },
+    saves: ['dex', 'cha'],
+    subclasses: [
+      { id: 'college-of-lore', name: 'College of Lore', unlockLevel: 3, grants: { subactions: [] } },
+      { id: 'college-of-valor', name: 'College of Valor', unlockLevel: 3, grants: { subactions: [] } },
+    ],
+  },
+  {
+    id: 'cleric',
+    name: 'Cleric',
+    hitDie: 8,
+    armor: ['light', 'medium', 'shields'],
+    weapons: ['simple'],
+    grants: { subactions: ['Cast Spell'] },
+    featuresByLevel: {
+      1: [
+        { name: 'Spellcasting', text: 'WIS‑based spellcasting. Cantrips & 1st‑level slots.' },
+        { name: 'Divine Domain', text: 'Choose a domain (subclass) and gain its level 1 features.' },
+      ],
+      2: [
+        { name: 'Channel Divinity (1/rest)', text: 'Turn Undead; your domain adds an additional Channel Divinity option.' },
+      ],
+      4: [
+        { name: 'Ability Score Improvement', text: '+2 to one ability or +1 to two abilities (demo text).' },
+      ],
+      5: [
+        { name: 'Destroy Undead (CR 1/2)', text: 'When a turned undead of CR 1/2 or lower fails its save, it is destroyed.' },
+        { name: 'Spellcasting Progression', text: 'Access to higher‑level spell slots and prepared spells.' },
+      ],
+    },
+    saves: ['wis', 'cha'],
+    subclasses: [
+      { id: 'life-domain', name: 'Life Domain', unlockLevel: 1, grants: { subactions: ['Channel Divinity: Preserve Life'] } },
+      { id: 'light-domain', name: 'Light Domain', unlockLevel: 1, grants: { subactions: ['Channel Divinity: Radiance of the Dawn'] } },
+    ],
+  },
+  {
+    id: 'druid',
+    name: 'Druid',
+    hitDie: 8,
+    armor: ['light', 'medium', 'shields'],
+    weapons: ['clubs', 'daggers', 'darts', 'javelins', 'maces', 'quarterstaff', 'scimitars', 'sickles', 'slings', 'spears'],
+    grants: { subactions: ['Cast Spell'] },
+    featuresByLevel: {
+      1: [
+        { name: 'Druidic', text: 'Secret druidic language known to druids.' },
+        { name: 'Spellcasting', text: 'WIS‑based prepared spellcasting. Cantrips & 1st‑level slots.' },
+      ],
+      2: [
+        { name: 'Wild Shape', text: 'Magically assume the shape of a beast you have seen (limited CR/time).' },
+        { name: 'Druid Circle', text: 'Choose a circle (subclass) and gain its level 2 features.' },
+      ],
+      4: [
+        { name: 'Ability Score Improvement', text: '+2 to one ability or +1 to two abilities (demo text).' },
+      ],
+      5: [
+        { name: 'Wild Shape Improvement', text: 'Improved wild shape options and spellcasting progression.' },
+      ],
+    },
+    saves: ['int', 'wis'],
+    subclasses: [
+      { id: 'circle-land', name: 'Circle of the Land', unlockLevel: 2, grants: { subactions: [] } },
+      { id: 'circle-moon', name: 'Circle of the Moon', unlockLevel: 2, grants: { subactions: ['Combat Wild Shape'] } },
     ],
   },
   {
@@ -94,13 +377,81 @@ const CLASSES: Klass[] = [
     armor: [],
     weapons: ['daggers', 'quarterstaff'],
     grants: { subactions: ['Cast Spell'] },
-    level1: [
-      { name: 'Spellcasting', text: 'INT spellcasting. Cantrips & 1st‑level slots.' },
-      { name: 'Arcane Recovery', text: 'Recover expended slots on short rest.' },
-    ],
+    featuresByLevel: {
+      1: [
+        { name: 'Spellcasting', text: 'INT spellcasting. Cantrips & 1st‑level slots.' },
+        { name: 'Arcane Recovery', text: 'Recover expended slots on short rest.' },
+      ],
+      2: [
+        { name: 'Arcane Tradition', text: 'Choose a subclass (school) and gain its level 2/3 features.' },
+      ],
+      4: [
+        { name: 'Ability Score Improvement', text: '+2 to one ability or +1 to two abilities (demo text).' },
+      ],
+      5: [
+        { name: 'Spellcasting Progression', text: 'Access to higher‑level spell slots and prepared spells.' },
+      ],
+    },
     saves: ['int', 'wis'],
     subclasses: [
       { id: 'evocation', name: 'School of Evocation', unlockLevel: 2, grants: { subactions: ['Sculpt Spells'] } },
+    ],
+  },
+  {
+    id: 'warlock',
+    name: 'Warlock',
+    hitDie: 8,
+    armor: ['light'],
+    weapons: ['simple'],
+    grants: { subactions: ['Cast Spell'] },
+    featuresByLevel: {
+      1: [
+        { name: 'Otherworldly Patron', text: 'Form a pact with a powerful entity and gain patron features.' },
+        { name: 'Pact Magic', text: 'CHA‑based spellcasting using pact slots; Eldritch Blast cantrip available.' },
+      ],
+      2: [
+        { name: 'Eldritch Invocations', text: 'Learn special invocations to augment abilities.' },
+      ],
+      3: [
+        { name: 'Pact Boon', text: 'Choose Chain, Blade, or Tome (not modeled in this demo).' },
+      ],
+      4: [
+        { name: 'Ability Score Improvement', text: '+2 to one ability or +1 to two abilities (demo text).' },
+      ],
+    },
+    saves: ['wis', 'cha'],
+    subclasses: [
+      { id: 'fiend', name: 'The Fiend', unlockLevel: 1 },
+      { id: 'archfey', name: 'The Archfey', unlockLevel: 1 },
+      { id: 'great-old-one', name: 'The Great Old One', unlockLevel: 1 },
+    ],
+  },
+  {
+    id: 'sorcerer',
+    name: 'Sorcerer',
+    hitDie: 6,
+    armor: [],
+    weapons: ['daggers', 'quarterstaff', 'light-crossbow'],
+    grants: { subactions: ['Cast Spell'] },
+    featuresByLevel: {
+      1: [
+        { name: 'Sorcerous Origin', text: 'Choose a bloodline that grants innate magic.' },
+        { name: 'Spellcasting', text: 'CHA‑based flexible spellcasting. Cantrips & 1st‑level slots.' },
+      ],
+      2: [
+        { name: 'Font of Magic', text: 'Sorcery Points fuel metamagic and spell slot conversions.' },
+      ],
+      3: [
+        { name: 'Metamagic', text: 'Alter spells using metamagic options.' },
+      ],
+      4: [
+        { name: 'Ability Score Improvement', text: '+2 to one ability or +1 to two abilities (demo text).' },
+      ],
+    },
+    saves: ['con', 'cha'],
+    subclasses: [
+      { id: 'draconic-bloodline', name: 'Draconic Bloodline', unlockLevel: 1 },
+      { id: 'wild-magic', name: 'Wild Magic', unlockLevel: 1 },
     ],
   },
 ]
@@ -193,7 +544,256 @@ const RACE_TRAIT_SKILLS: Record<string, string[]> = {
 const CLASS_SKILL_CHOICES: Record<string, { count: number; options: string[] }> = {
   barbarian: { count: 2, options: ['animal', 'athletics', 'intimidation', 'nature', 'perception', 'survival'] },
   fighter: { count: 2, options: ['acrobatics', 'animal', 'athletics', 'history', 'insight', 'intimidation', 'perception', 'survival'] },
+  bard: { count: 3, options: ['acrobatics','animal','arcana','athletics','deception','history','insight','intimidation','investigation','medicine','nature','perception','performance','persuasion','religion','sleight','stealth','survival'] },
+  cleric: { count: 2, options: ['history', 'insight', 'medicine', 'persuasion', 'religion'] },
+  druid: { count: 2, options: ['arcana', 'animal', 'insight', 'medicine', 'nature', 'perception', 'religion', 'survival'] },
+  ranger: { count: 3, options: ['animal','athletics','insight','investigation','nature','perception','stealth','survival'] },
+  paladin: { count: 2, options: ['athletics', 'insight', 'intimidation', 'medicine', 'persuasion', 'religion'] },
+  monk: { count: 2, options: ['acrobatics', 'athletics', 'history', 'insight', 'religion', 'stealth'] },
+  warlock: { count: 2, options: ['arcana','deception','history','intimidation','investigation','nature','religion'] },
+  sorcerer: { count: 2, options: ['arcana','deception','insight','intimidation','persuasion','religion'] },
+  rogue: { count: 4, options: ['acrobatics','athletics','deception','insight','intimidation','investigation','perception','performance','persuasion','sleight','stealth'] },
   wizard: { count: 2, options: ['arcana', 'history', 'insight', 'investigation', 'medicine', 'religion'] },
+}
+
+// Class feature decisions (demo): e.g., Fighter Fighting Style at level 1
+type ClassFeatureDecisionSpec = {
+  id: string
+  name: string
+  level: number
+  picks?: number
+  options: Array<{ id: string; name: string; text: string }>
+}
+const CLASS_FEATURE_DECISIONS: Record<string, ClassFeatureDecisionSpec[]> = {
+  fighter: [
+    {
+      id: 'fighting-style',
+      name: 'Fighting Style',
+      level: 1,
+      picks: 1,
+      options: [
+        { id: 'archery', name: 'Archery', text: '+2 to attack rolls with ranged weapons.' },
+        { id: 'defense', name: 'Defense', text: '+1 AC while wearing armor.' },
+        { id: 'dueling', name: 'Dueling', text: '+2 damage when wielding a single one‑handed weapon.' },
+        { id: 'great-weapon', name: 'Great Weapon Fighting', text: 'Reroll 1s and 2s on damage dice with two‑handed weapons.' },
+        { id: 'protection', name: 'Protection', text: 'Use a shield to impose disadvantage on an attack (reaction).' },
+        { id: 'two-weapon', name: 'Two‑Weapon Fighting', text: 'Add ability mod to off‑hand damage with two‑weapon fighting.' },
+      ],
+    },
+  ],
+  paladin: [
+    {
+      id: 'fighting-style',
+      name: 'Fighting Style',
+      level: 2,
+      picks: 1,
+      options: [
+        { id: 'defense', name: 'Defense', text: '+1 AC while wearing armor.' },
+        { id: 'dueling', name: 'Dueling', text: '+2 damage when wielding a single one‑handed weapon.' },
+        { id: 'great-weapon', name: 'Great Weapon Fighting', text: 'Reroll 1s and 2s on damage dice with two‑handed weapons.' },
+        { id: 'protection', name: 'Protection', text: 'Use a shield to impose disadvantage on an attack (reaction).' },
+      ],
+    },
+    {
+      id: 'sacred-oath',
+      name: 'Sacred Oath',
+      level: 3,
+      picks: 1,
+      options: [
+        { id: 'oath-devotion', name: 'Oath of Devotion', text: 'Channel Divinity options: Sacred Weapon, Turn the Unholy.' },
+        { id: 'oath-vengeance', name: 'Oath of Vengeance', text: 'Channel Divinity options: Abjure Enemy, Vow of Enmity.' },
+      ],
+    },
+  ],
+  cleric: [
+    {
+      id: 'divine-domain',
+      name: 'Divine Domain',
+      level: 1,
+      picks: 1,
+      options: [
+        { id: 'life-domain', name: 'Life Domain', text: 'Healer‑focused domain; Channel Divinity: Preserve Life.' },
+        { id: 'light-domain', name: 'Light Domain', text: 'Radiant/Fire domain; Channel Divinity: Radiance of the Dawn.' },
+      ],
+    },
+  ],
+  druid: [
+    {
+      id: 'druid-circle',
+      name: 'Druid Circle',
+      level: 2,
+      picks: 1,
+      options: [
+        { id: 'circle-land', name: 'Circle of the Land', text: 'Bonus spells and recovery tied to the land.' },
+        { id: 'circle-moon', name: 'Circle of the Moon', text: 'Combat‑focused Wild Shape improvements.' },
+      ],
+    },
+  ],
+  bard: [
+    {
+      id: 'bard-college',
+      name: 'Bard College',
+      level: 3,
+      picks: 1,
+      options: [
+        { id: 'college-of-lore', name: 'College of Lore', text: 'Additional magical secrets and skills.' },
+        { id: 'college-of-valor', name: 'College of Valor', text: 'Martial training with medium armor, shields, and martial weapons.' },
+      ],
+    },
+    {
+      id: 'expertise',
+      name: 'Expertise',
+      level: 3,
+      picks: 2,
+      options: [
+        // Use the global SKILLS list for options
+        // Filled just below using a placeholder; this will be replaced at runtime in UI rendering
+        // We'll still provide static entries to satisfy types; UI will read from here.
+        { id: 'acrobatics', name: 'Acrobatics', text: 'Double proficiency in Acrobatics.' },
+        { id: 'animal', name: 'Animal Handling', text: 'Double proficiency in Animal Handling.' },
+        { id: 'arcana', name: 'Arcana', text: 'Double proficiency in Arcana.' },
+        { id: 'athletics', name: 'Athletics', text: 'Double proficiency in Athletics.' },
+        { id: 'deception', name: 'Deception', text: 'Double proficiency in Deception.' },
+        { id: 'history', name: 'History', text: 'Double proficiency in History.' },
+        { id: 'insight', name: 'Insight', text: 'Double proficiency in Insight.' },
+        { id: 'intimidation', name: 'Intimidation', text: 'Double proficiency in Intimidation.' },
+        { id: 'investigation', name: 'Investigation', text: 'Double proficiency in Investigation.' },
+        { id: 'medicine', name: 'Medicine', text: 'Double proficiency in Medicine.' },
+        { id: 'nature', name: 'Nature', text: 'Double proficiency in Nature.' },
+        { id: 'perception', name: 'Perception', text: 'Double proficiency in Perception.' },
+        { id: 'performance', name: 'Performance', text: 'Double proficiency in Performance.' },
+        { id: 'persuasion', name: 'Persuasion', text: 'Double proficiency in Persuasion.' },
+        { id: 'religion', name: 'Religion', text: 'Double proficiency in Religion.' },
+        { id: 'sleight', name: 'Sleight of Hand', text: 'Double proficiency in Sleight of Hand.' },
+        { id: 'stealth', name: 'Stealth', text: 'Double proficiency in Stealth.' },
+        { id: 'survival', name: 'Survival', text: 'Double proficiency in Survival.' },
+      ],
+    },
+  ],
+  monk: [
+    {
+      id: 'monastic-tradition',
+      name: 'Monastic Tradition',
+      level: 3,
+      picks: 1,
+      options: [
+        { id: 'open-hand', name: 'Way of the Open Hand', text: 'Enhance Flurry of Blows with additional effects.' },
+        { id: 'shadow', name: 'Way of Shadow', text: 'Ki‑powered stealth and shadow arts.' },
+      ],
+    },
+  ],
+  warlock: [
+    {
+      id: 'otherworldly-patron',
+      name: 'Otherworldly Patron',
+      level: 1,
+      picks: 1,
+      options: [
+        { id: 'fiend', name: 'The Fiend', text: 'Dark bargains grant destructive power.' },
+        { id: 'archfey', name: 'The Archfey', text: 'Fey patrons grant beguiling and trickster magic.' },
+        { id: 'great-old-one', name: 'The Great Old One', text: 'Alien entities gift telepathy and mind‑bending magic.' },
+      ],
+    },
+    {
+      id: 'eldritch-invocations',
+      name: 'Eldritch Invocations',
+      level: 2,
+      picks: 2,
+      options: [
+        { id: 'agonizing-blast', name: 'Agonizing Blast', text: 'Add CHA to Eldritch Blast damage (demo note).' },
+        { id: 'repelling-blast', name: 'Repelling Blast', text: 'Push creatures hit by Eldritch Blast (demo note).' },
+        { id: 'devil-sight', name: 'Devil’s Sight', text: 'See normally in magical darkness (demo note).' },
+        { id: 'armor-of-shadows', name: 'Armor of Shadows', text: 'Cast Mage Armor at will (demo note).' },
+      ],
+    },
+  ],
+  sorcerer: [
+    {
+      id: 'sorcerous-origin',
+      name: 'Sorcerous Origin',
+      level: 1,
+      picks: 1,
+      options: [
+        { id: 'draconic-bloodline', name: 'Draconic Bloodline', text: 'Innate draconic magic strengthens body and spells.' },
+        { id: 'wild-magic', name: 'Wild Magic', text: 'Unpredictable surges of magic can occur when casting.' },
+      ],
+    },
+    {
+      id: 'metamagic',
+      name: 'Metamagic',
+      level: 3,
+      picks: 2,
+      options: [
+        { id: 'quickened-spell', name: 'Quickened Spell', text: 'Cast a spell as a bonus action (demo note).' },
+        { id: 'twinned-spell', name: 'Twinned Spell', text: 'Target a second creature with a single-target spell (demo note).' },
+        { id: 'subtle-spell', name: 'Subtle Spell', text: 'Cast without verbal or somatic components (demo note).' },
+        { id: 'careful-spell', name: 'Careful Spell', text: 'Protect allies from your spells’ effects (demo note).' },
+      ],
+    },
+  ],
+  ranger: [
+    {
+      id: 'fighting-style',
+      name: 'Fighting Style',
+      level: 2,
+      picks: 1,
+      options: [
+        { id: 'archery', name: 'Archery', text: '+2 to attack rolls with ranged weapons.' },
+        { id: 'defense', name: 'Defense', text: '+1 AC while wearing armor.' },
+        { id: 'dueling', name: 'Dueling', text: '+2 damage when wielding a single one‑handed weapon.' },
+        { id: 'two-weapon', name: 'Two‑Weapon Fighting', text: 'Add ability mod to off‑hand damage with two‑weapon fighting.' },
+      ],
+    },
+    {
+      id: 'ranger-archetype',
+      name: 'Ranger Archetype',
+      level: 3,
+      picks: 1,
+      options: [
+        { id: 'hunter', name: 'Hunter', text: 'Gain defensive and offensive options tailored to hunting prey.' },
+        { id: 'beast-master', name: 'Beast Master', text: 'Bond with a beast companion that fights alongside you.' },
+      ],
+    },
+  ],
+  rogue: [
+    {
+      id: 'expertise',
+      name: 'Expertise',
+      level: 1,
+      picks: 2,
+      options: [
+        { id: 'acrobatics', name: 'Acrobatics', text: 'Double proficiency in Acrobatics.' },
+        { id: 'animal', name: 'Animal Handling', text: 'Double proficiency in Animal Handling.' },
+        { id: 'arcana', name: 'Arcana', text: 'Double proficiency in Arcana.' },
+        { id: 'athletics', name: 'Athletics', text: 'Double proficiency in Athletics.' },
+        { id: 'deception', name: 'Deception', text: 'Double proficiency in Deception.' },
+        { id: 'history', name: 'History', text: 'Double proficiency in History.' },
+        { id: 'insight', name: 'Insight', text: 'Double proficiency in Insight.' },
+        { id: 'intimidation', name: 'Intimidation', text: 'Double proficiency in Intimidation.' },
+        { id: 'investigation', name: 'Investigation', text: 'Double proficiency in Investigation.' },
+        { id: 'medicine', name: 'Medicine', text: 'Double proficiency in Medicine.' },
+        { id: 'nature', name: 'Nature', text: 'Double proficiency in Nature.' },
+        { id: 'perception', name: 'Perception', text: 'Double proficiency in Perception.' },
+        { id: 'performance', name: 'Performance', text: 'Double proficiency in Performance.' },
+        { id: 'persuasion', name: 'Persuasion', text: 'Double proficiency in Persuasion.' },
+        { id: 'religion', name: 'Religion', text: 'Double proficiency in Religion.' },
+        { id: 'sleight', name: 'Sleight of Hand', text: 'Double proficiency in Sleight of Hand.' },
+        { id: 'stealth', name: 'Stealth', text: 'Double proficiency in Stealth.' },
+        { id: 'survival', name: 'Survival', text: 'Double proficiency in Survival.' },
+      ],
+    },
+    {
+      id: 'roguish-archetype',
+      name: 'Roguish Archetype',
+      level: 3,
+      picks: 1,
+      options: [
+        { id: 'thief', name: 'Thief', text: 'Fast Hands and Second-Story Work (demo note).' },
+        { id: 'assassin', name: 'Assassin', text: 'Bonus to disguises/poisons; devastating ambushes (demo note).' },
+        { id: 'arcane-trickster', name: 'Arcane Trickster', text: 'Learn minor spells from the wizard list (demo note).' },
+      ],
+    },
+  ],
 }
 
 // Backgrounds (demo)
@@ -212,6 +812,55 @@ const BACKGROUNDS: Background[] = [
   { id: 'sage', name: 'Sage', skills: ['arcana', 'history'], languages: 2, feature: { name: 'Researcher', text: 'You can find information with ease in libraries and archives.' } },
   { id: 'folk-hero', name: 'Folk Hero', skills: ['animal', 'survival'], tools: ['artisan’s tools', 'vehicles (land)'], feature: { name: 'Rustic Hospitality', text: 'You fit in among common folk and can find shelter among them.' } },
   { id: 'urchin', name: 'Urchin', skills: ['sleight', 'stealth'], tools: ['disguise kit', 'thieves’ tools'], feature: { name: 'City Secrets', text: 'You know the secret patterns and flow to cities and can find passages through the urban sprawl.' } },
+]
+
+// Spells (demo)
+type Spell = { id: string; name: string; level: 0 | 1; classes: string[]; text: string }
+const SPELLS: Spell[] = [
+  // Cantrips (Level 0)
+  { id: 'vicious-mockery', name: 'Vicious Mockery', level: 0, classes: ['bard'], text: 'Insult a creature; it takes psychic damage and has disadvantage on next attack.' },
+  { id: 'prestidigitation', name: 'Prestidigitation', level: 0, classes: ['bard', 'wizard'], text: 'Minor magical tricks and sensory effects.' },
+  { id: 'mage-hand', name: 'Mage Hand', level: 0, classes: ['bard', 'wizard'], text: 'Create a spectral hand to manipulate objects.' },
+  { id: 'friends', name: 'Friends', level: 0, classes: ['bard'], text: 'Gain advantage on CHA checks directed at one creature.' },
+  // Druid cantrips
+  { id: 'produce-flame', name: 'Produce Flame', level: 0, classes: ['druid'], text: 'Conjure a flame in your hand; shed light and can hurl for fire damage.' },
+  { id: 'shillelagh', name: 'Shillelagh', level: 0, classes: ['druid'], text: 'Imbue a club or quarterstaff; use WIS for attack/damage.' },
+  { id: 'thorn-whip', name: 'Thorn Whip', level: 0, classes: ['druid'], text: 'Create a vine whip; pull a creature closer on a hit.' },
+  { id: 'guidance', name: 'Guidance', level: 0, classes: ['cleric'], text: 'Add 1d4 to one ability check.' },
+  { id: 'sacred-flame', name: 'Sacred Flame', level: 0, classes: ['cleric'], text: 'Radiant fire descends on a creature; DEX save for no damage.' },
+  { id: 'thaumaturgy', name: 'Thaumaturgy', level: 0, classes: ['cleric'], text: 'Manifest minor wonders to show divine power.' },
+  { id: 'spare-the-dying', name: 'Spare the Dying', level: 0, classes: ['cleric'], text: 'Stabilize a creature at 0 HP.' },
+  { id: 'fire-bolt', name: 'Fire Bolt', level: 0, classes: ['wizard'], text: 'Ranged spell attack for fire damage.' },
+  { id: 'ray-of-frost', name: 'Ray of Frost', level: 0, classes: ['wizard'], text: 'Ray of cold that slows the target.' },
+  // Warlock cantrip
+  { id: 'eldritch-blast', name: 'Eldritch Blast', level: 0, classes: ['warlock'], text: 'Ranged spell attack dealing force damage.' },
+  // Level 1
+  { id: 'healing-word', name: 'Healing Word', level: 1, classes: ['bard', 'cleric'], text: 'Bonus action healing at range.' },
+  { id: 'tashas-hideous-laughter', name: "Tasha's Hideous Laughter", level: 1, classes: ['bard'], text: 'A creature falls prone with laughter; WIS save ends.' },
+  { id: 'dissonant-whispers', name: 'Dissonant Whispers', level: 1, classes: ['bard'], text: 'Psychic damage; target may flee immediately.' },
+  { id: 'faerie-fire', name: 'Faerie Fire', level: 1, classes: ['bard'], text: 'Outline creatures; attacks against them have advantage.' },
+  { id: 'charm-person', name: 'Charm Person', level: 1, classes: ['bard', 'wizard'], text: 'Attempt to charm a humanoid.' },
+  { id: 'cure-wounds', name: 'Cure Wounds', level: 1, classes: ['cleric'], text: 'Touch-based healing.' },
+  { id: 'bless', name: 'Bless', level: 1, classes: ['cleric'], text: 'Add 1d4 to allies’ attack rolls and saves.' },
+  { id: 'guiding-bolt', name: 'Guiding Bolt', level: 1, classes: ['cleric'], text: 'Radiant damage and advantage for next attack against target.' },
+  { id: 'sanctuary', name: 'Sanctuary', level: 1, classes: ['cleric'], text: 'Ward a creature against attack; attackers must make a save.' },
+  // Druid level 1
+  { id: 'entangle', name: 'Entangle', level: 1, classes: ['druid'], text: 'Grasping weeds restrain creatures in a 20‑foot square.' },
+  { id: 'goodberry', name: 'Goodberry', level: 1, classes: ['druid'], text: 'Create ten berries that heal when eaten.' },
+  // Ranger level 1 (also on druid in PHB, included for ranger demo availability)
+  { id: 'hunters-mark', name: "Hunter's Mark", level: 1, classes: ['ranger'], text: 'Mark a target to deal extra damage and track it more easily.' },
+  { id: 'ensnaring-strike', name: 'Ensnaring Strike', level: 1, classes: ['ranger'], text: 'Vines spring forth to restrain the target on a hit.' },
+  // Paladin level 1
+  { id: 'compelled-duel', name: 'Compelled Duel', level: 1, classes: ['paladin'], text: 'Compel a creature to duel you; disadvantage to attack others.' },
+  { id: 'divine-favor', name: 'Divine Favor', level: 1, classes: ['paladin'], text: 'Your weapon attacks deal +1d4 radiant damage.' },
+  { id: 'shield-of-faith', name: 'Shield of Faith', level: 1, classes: ['paladin'], text: 'A shimmering field grants +2 AC for duration.' },
+  { id: 'magic-missile', name: 'Magic Missile', level: 1, classes: ['wizard'], text: 'Automatically hits with force darts.' },
+  { id: 'shield-spell', name: 'Shield', level: 1, classes: ['wizard'], text: '+5 AC as a reaction until your next turn.' },
+  { id: 'mage-armor', name: 'Mage Armor', level: 1, classes: ['wizard'], text: 'Protective magical force; set AC when unarmored.' },
+  { id: 'sleep', name: 'Sleep', level: 1, classes: ['wizard'], text: 'Magically send creatures into slumber.' },
+  // Warlock level 1
+  { id: 'hex', name: 'Hex', level: 1, classes: ['warlock'], text: 'Curse a creature; deal extra damage and disadvantage on checks.' },
+  { id: 'armor-of-agathys', name: 'Armor of Agathys', level: 1, classes: ['warlock'], text: 'Gain temporary HP and deal cold damage to attackers.' },
 ]
 
 // ---------------- Utilities ----------------
@@ -243,11 +892,12 @@ function validateChoice(state: AppState): Issue[] {
   const handsInUse = state.loadout.reduce((acc, i) => acc + getHands(i), 0)
   const twoHandedWeapon = state.loadout.find((i) => (i as any).tags?.includes('two‑handed'))
 
+  const fa = finalAbility(state.abilities, state.race, state.asi)
   if (twoHandedWeapon && hasShield) {
     issues.push({ level: 'error', msg: 'Two‑handed weapon cannot be used with a shield equipped.' })
   }
 
-  if (armor?.id === 'chain' && (state.abilities.str || 10) < 13) {
+  if (armor?.id === 'chain' && (fa.str || 10) < 13) {
     issues.push({ level: 'warn', msg: 'Chain Mail requires STR 13 for optimal use (speed penalties otherwise).' })
   }
 
@@ -269,9 +919,11 @@ function validateChoice(state: AppState): Issue[] {
 // ---------------- Derived & Simulation ----------------
 
 function computeDerived(state: AppState) {
-  const dexMod = mod(state.abilities.dex)
-  const conMod = mod(state.abilities.con)
-  const strMod = mod(state.abilities.str)
+  // Use final abilities including race ASIs and allocated ASIs
+  const fa = finalAbility(state.abilities, state.race, state.asi)
+  const dexMod = mod(fa.dex)
+  const conMod = mod(fa.con)
+  const strMod = mod(fa.str)
 
   const armor = state.loadout.find((i) => i.type === 'armor') as Extract<Equipment, { type: 'armor' }> | undefined
   const shield = state.loadout.find((i) => i.type === 'shield') as Extract<Equipment, { type: 'shield' }> | undefined
@@ -296,6 +948,10 @@ function computeDerived(state: AppState) {
     const extraLevels = Math.max(0, (c.level || 0) - (idx === 0 ? 1 : 0))
     hp += extraLevels * perLevel
   })
+  // Feat: Tough adds +2 HP per total level
+  if ((state.feats || []).includes('tough')) {
+    hp += 2 * totalLevel
+  }
 
   const speed = state.race?.speed ?? 30
 
@@ -305,7 +961,7 @@ function computeDerived(state: AppState) {
   const subactions = dedupe([...classSubs, ...subclassSubs, ...itemSubs])
 
   // Saving throws (union of class save proficiencies)
-  const final = finalAbility(state.abilities, state.race)
+  const final = finalAbility(state.abilities, state.race, state.asi)
   const prof = proficiencyBonus(totalLevel)
   const saveProfs = dedupe(state.classes.flatMap((c) => c.klass.saves ?? []))
   const saves: Record<AbilityKey, number> = {
@@ -317,7 +973,9 @@ function computeDerived(state: AppState) {
     cha: mod(final.cha) + (saveProfs.includes('cha') ? prof : 0),
   }
 
-  return { ac, hp, speed, subactions, dexMod, conMod, strMod, saves, totalLevel }
+  // Initiative (DEX mod plus Alert +5)
+  const initiative = dexMod + ((state.feats || []).includes('alert') ? 5 : 0)
+  return { ac, hp, speed, subactions, dexMod, conMod, strMod, saves, totalLevel, initiative }
 }
 
 function simulateReadiness(state: AppState) {
@@ -333,8 +991,8 @@ function simulateReadiness(state: AppState) {
 
 function Labeled(props: { label: string; children: React.ReactNode }) {
   return (
-    <div style={{ display: 'grid', gap: 4 }}>
-      <div style={{ fontSize: 12, color: '#64748b' }}>{props.label}</div>
+    <div style={{ display: 'grid', gap: 6 }}>
+      <div style={{ fontSize: 12, color: '#64748b', letterSpacing: 0.3, textTransform: 'uppercase' }}>{props.label}</div>
       {props.children}
     </div>
   )
@@ -376,13 +1034,13 @@ function Card(props: { children: React.ReactNode }) {
   return <section style={card}>{props.children}</section>
 }
 function CardHeader(props: { children: React.ReactNode }) {
-  return <div style={{ padding: 12, borderBottom: '1px solid #e2e8f0' }}>{props.children}</div>
+  return <div style={{ padding: '14px 16px', borderBottom: '1px solid #e2e8f0' }}>{props.children}</div>
 }
 function CardTitle(props: { children: React.ReactNode }) {
-  return <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 600 }}>{props.children}</div>
+  return <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontWeight: 700, fontSize: 15 }}>{props.children}</div>
 }
 function CardContent(props: { children: React.ReactNode }) {
-  return <div style={{ padding: 12, display: 'grid', gap: 12 }}>{props.children}</div>
+  return <div style={{ padding: 16, display: 'grid', gap: 12 }}>{props.children}</div>
 }
 
 // ---------------- Styles ----------------
@@ -390,7 +1048,7 @@ function CardContent(props: { children: React.ReactNode }) {
 const inp: React.CSSProperties = { width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #cbd5e1' }
 const badgeSecondary: React.CSSProperties = { padding: '2px 8px', borderRadius: 999, background: '#f1f5f9', border: '1px solid #e2e8f0', fontSize: 12 }
 const badgeOutline: React.CSSProperties = { padding: '2px 8px', borderRadius: 999, border: '1px solid #e2e8f0', fontSize: 12 }
-const card: React.CSSProperties = { border: '1px solid #e2e8f0', borderRadius: 12, background: 'white' }
+const card: React.CSSProperties = { border: '1px solid #e2e8f0', borderRadius: 12, background: 'white', boxShadow: '0 2px 8px rgba(15,23,42,0.05)' }
 
 // ---------------- App State ----------------
 
@@ -401,11 +1059,20 @@ export type AppState = {
   abilities: Record<AbilityKey, number>
   loadout: Equipment[]
   background?: Background
+  // Minimal spell tracking: known (for bards/wizards demo), prepared (for cleric demo)
+  spells?: {
+    known: Record<string, string[]> // by classId -> spell ids known (cantrips + 1st in this demo)
+    prepared: Record<string, string[]> // by classId -> prepared spell ids (cleric)
+  }
+  // ASI allocation (+1 steps per ability) and selected feats (each costs 2 points)
+  asi?: Record<AbilityKey, number>
+  feats?: string[] // feat ids
+  featChoices?: Record<string, any>
 }
 
 // ---------------- Main Component ----------------
 
-export function Builder(props: { onCharacterChange?: (state: AppState, derived?: any) => void }) {
+export function Builder(props: { onCharacterChange?: (state: AppState, derived?: any) => void; importPlan?: any }) {
   const [mode, setMode] = useState<'guided' | 'power'>('power')
   const [name, setName] = useState('New Hero')
   const [race, setRace] = useState<Race>(RACES[0])
@@ -430,6 +1097,8 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
   const [classSkillPicks, setClassSkillPicks] = useState<Record<string, string[]>>({})
   const [bgReplPicks, setBgReplPicks] = useState<string[]>([])
   const [raceReplPicks, setRaceReplPicks] = useState<string[]>([])
+  // Class feature choices (by classId -> decisionId -> optionId or optionId[] for multi-pick)
+  const [classFeatureChoices, setClassFeatureChoices] = useState<Record<string, Record<string, string | string[]>>>({})
   const [history, setHistory] = useState<string[]>([])
   const [future, setFuture] = useState<string[]>([])
   // Catalog search/filter state
@@ -448,7 +1117,26 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
   }, [catalogQuery, catalogTags])
   const toggleTag = (tag: string) => setCatalogTags((prev) => (prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]))
 
-  const state: AppState = { name, race, classes, abilities, loadout, background }
+  // Spells state (simple per-class storage)
+  const [knownSpells, setKnownSpells] = useState<Record<string, string[]>>({})
+  const [preparedSpells, setPreparedSpells] = useState<Record<string, string[]>>({})
+  // ASI & Feats state
+  const [asiAlloc, setAsiAlloc] = useState<Record<AbilityKey, number>>({ str: 0, dex: 0, con: 0, int: 0, wis: 0, cha: 0 })
+  const [selectedFeats, setSelectedFeats] = useState<string[]>([])
+  const [featChoices, setFeatChoices] = useState<Record<string, any>>({})
+
+  const state: AppState = {
+    name,
+    race,
+    classes,
+    abilities,
+    loadout,
+    background,
+    spells: { known: knownSpells, prepared: preparedSpells },
+    asi: asiAlloc,
+  feats: selectedFeats,
+  featChoices,
+  }
   const derived = useMemo(() => computeDerived(state), [state])
   const issues = useMemo(() => validateChoice(state), [state])
   const sim = useMemo(() => simulateReadiness(state), [state])
@@ -465,6 +1153,35 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
   function setSubclassChoice(klassId: string, s: Subclass) {
     setClasses((cs) => cs.map((c) => (c.klass.id === klassId ? { ...c, subclass: s } : c)))
   }
+
+  // Sync subclass when a decision picks a subclass-like choice (e.g., Cleric Domain, Bard College)
+  useEffect(() => {
+    setClasses((cs) => {
+      let changed = false
+      const out = cs.map((c) => {
+  const specs = CLASS_FEATURE_DECISIONS[c.klass.id] || []
+        const sublike = specs.find((d) => (
+          d.name === 'Divine Domain' ||
+          d.name === 'Bard College' ||
+          d.name === 'Otherworldly Patron' ||
+          d.name === 'Sorcerous Origin' ||
+          d.name === 'Ranger Archetype' ||
+          d.name === 'Roguish Archetype'
+        ))
+        if (!sublike || (c.level || 0) < sublike.level) return c
+        const raw = classFeatureChoices[c.klass.id]?.[sublike.id]
+        const chosenId = Array.isArray(raw) ? raw[0] : raw
+        if (!chosenId) return c
+        const target = (c.klass.subclasses || []).find((s) => s.id === chosenId)
+        if (target && (!c.subclass || c.subclass.id !== target.id)) {
+          changed = true
+          return { ...c, subclass: target }
+        }
+        return c
+      })
+      return changed ? out : cs
+    })
+  }, [classFeatureChoices])
 
   // Auto-apply background/race skill grants immediately, and remove stale grants when switching
   useEffect(() => {
@@ -544,6 +1261,53 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [name, race, JSON.stringify(classes), JSON.stringify(abilities), JSON.stringify(loadout), JSON.stringify(background), derived])
 
+  // Apply a plan imported from the Progression Planner
+  useEffect(() => {
+    const plan = props.importPlan
+    if (!plan) return
+    try {
+      // Map race/background by name
+      const nextRace = RACES.find((r) => r.name === plan.race) || race
+      const nextBg = BACKGROUNDS.find((b) => b.name === plan.background) || background
+
+      // Aggregate levels -> classes map
+      const levelEntries: Array<{ level: number; className?: string; feats?: string[] }> = Array.isArray(plan.levels) ? plan.levels : []
+      const classCounts: Record<string, number> = {}
+      levelEntries.forEach((lv) => {
+        const nm = String(lv.className || '').trim()
+        if (!nm) return
+        classCounts[nm] = (classCounts[nm] || 0) + 1
+      })
+      // Build classes array using known CLASSES by name
+      const nextClasses: Array<{ klass: Klass; level: number; subclass?: Subclass }> = []
+      Object.entries(classCounts).forEach(([nm, lvl]) => {
+        const k = CLASSES.find((c) => c.name === nm)
+        if (k) nextClasses.push({ klass: k, level: lvl })
+      })
+      if (!nextClasses.length) nextClasses.push({ klass: CLASSES[0], level: 1 })
+
+      // Collect feats: map incoming names to known FEATS ids when possible
+      const nextFeats: string[] = []
+      levelEntries.forEach((lv) => {
+        const arr: string[] = Array.isArray(lv.feats) ? lv.feats : []
+        arr.forEach((f) => {
+          if (f && typeof f === 'string') {
+            const match = FEATS.find((x) => x.id === f || x.name.toLowerCase() === f.toLowerCase())
+            nextFeats.push(match ? match.id : f)
+          }
+        })
+      })
+
+      // Snapshot current state for undo
+      snapshot()
+      setRace(nextRace)
+      setBackground(nextBg)
+      setClasses(nextClasses)
+      setSelectedFeats(nextFeats)
+    } catch {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JSON.stringify(props.importPlan)])
+
   function snapshot() {
     setHistory((h) => [...h, JSON.stringify(state)])
     setFuture([])
@@ -566,7 +1330,7 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
   }
 
   return (
-    <div style={{ display: 'grid', gap: 12 }}>
+    <div style={{ display: 'grid', gap: 16 }}>
       {/* Top controls similar to demo header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0' }}>
         <Sparkles size={18} />
@@ -584,7 +1348,7 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
       </div>
 
       {/* Main grid: left builder, right summary */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 380px', gap: 12 }}>
+  <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 420px', gap: 16, alignItems: 'start' }}>
         {/* Left */}
         <div style={{ display: 'grid', gap: 12 }}>
           {/* Basics */}
@@ -621,7 +1385,7 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
                   />
                 </div>
 
-                <AbilityEditor abilities={abilities} onChange={setAbilities} race={race} />
+                <AbilityEditor abilities={abilities} onChange={setAbilities} race={race} asi={asiAlloc} />
               </div>
             </CardContent>
           </Card>
@@ -654,13 +1418,31 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
               classNeeds.push({ klassId: c.klass.id, klassName: c.klass.name, need: remaining, count: spec.count, options: opts })
             })
 
+            // Class feature decisions (e.g., Fighter Fighting Style)
+            // Support multi-pick decisions by allowing selected to be string | string[]
+            type PendingDecision = { klassId: string; klassName: string; decision: ClassFeatureDecisionSpec; selected?: string | string[] }
+            const decisionNeeds: PendingDecision[] = []
+            classes.forEach((c) => {
+              const specs = CLASS_FEATURE_DECISIONS[c.klass.id] || []
+              specs.forEach((d) => {
+                if ((c.level || 0) >= d.level) {
+                  const selected = classFeatureChoices[c.klass.id]?.[d.id]
+                  decisionNeeds.push({ klassId: c.klass.id, klassName: c.klass.name, decision: d, selected })
+                }
+              })
+            })
+
             // Replacement pool for conflicts: show all skills; mark already-proficient as orange/disabled
             const allSkillIds = SKILLS.map((s) => s.id)
             const availableForReplacement = allSkillIds
             // Background conflicts do not grant alternatives; only race replacements remain
             const remainingReplacements = Math.max(0, raceConflicts.length - raceReplPicks.length)
 
-            const hasAnyPending = classNeeds.reduce((a, b) => a + b.need, 0) + remainingReplacements > 0
+            const hasAnyPending = classNeeds.reduce((a, b) => a + b.need, 0) + remainingReplacements + decisionNeeds.filter(d => {
+              if (!d.selected) return true
+              if (Array.isArray(d.selected)) return d.selected.length < (d.decision.picks || 1)
+              return false
+            }).length > 0
 
 
             return (
@@ -789,10 +1571,76 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
                       </div>
                     )}
 
+                    {/* Class feature decisions (e.g., Fighting Style) */}
+                    {(() => {
+                      // Rebuild within render scope to keep types simple
+                      type PendingDecision = { klassId: string; klassName: string; decision: ClassFeatureDecisionSpec; selected?: string | string[] }
+                      const decisionNeeds: PendingDecision[] = []
+                      classes.forEach((c) => {
+                        const specs = CLASS_FEATURE_DECISIONS[c.klass.id] || []
+                        specs.forEach((d) => {
+                          if ((c.level || 0) >= d.level) {
+                            const selected = classFeatureChoices[c.klass.id]?.[d.id]
+                            decisionNeeds.push({ klassId: c.klass.id, klassName: c.klass.name, decision: d, selected })
+                          }
+                        })
+                      })
+                      if (!decisionNeeds.length) return null
+                      return (
+                        <div style={{ display: 'grid', gap: 8 }}>
+                          <div style={{ fontWeight: 600 }}>Class Feature Decisions</div>
+                          {decisionNeeds.map(({ klassId, klassName, decision, selected }) => (
+                            <div key={`${klassId}:${decision.id}`} style={{ display: 'grid', gap: 6 }}>
+                              <div style={{ fontSize: 12, color: '#64748b' }}>
+                                {klassName}: {decision.name} {(() => {
+                                  const need = decision.picks || 1
+                                  const have = Array.isArray(selected) ? selected.length : (selected ? 1 : 0)
+                                  return have >= need ? '(complete)' : `(pick ${need - have} more)`
+                                })()}
+                              </div>
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                                {decision.options.map((opt) => {
+                                  const need = decision.picks || 1
+                                  const selArr = Array.isArray(selected) ? selected : (selected ? [selected] : [])
+                                  const isSelected = selArr.includes(opt.id)
+                                  const atMax = selArr.length >= need
+                                  return (
+                                    <Button
+                                      key={opt.id}
+                                      size="sm"
+                                      variant={isSelected ? 'default' : 'outline'}
+                                      disabled={!isSelected && atMax}
+                                      onClick={() => {
+                                        setClassFeatureChoices((prev) => {
+                                          const byClass = { ...(prev[klassId] || {}) }
+                                          const cur = byClass[decision.id]
+                                          const curArr = Array.isArray(cur) ? cur : (cur ? [cur] : [])
+                                          let next: string[]
+                                          if (isSelected) {
+                                            next = curArr.filter((x) => x !== opt.id)
+                                          } else {
+                                            next = atMax ? curArr : [...curArr, opt.id]
+                                          }
+                                          byClass[decision.id] = need === 1 ? (next[0] || '') : next
+                                          return { ...prev, [klassId]: byClass }
+                                        })
+                                      }}
+                                      title={opt.text}
+                                      style={{ opacity: !isSelected && atMax ? 0.6 : 1 }}
+                                    >{opt.name}</Button>
+                                  )
+                                })}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )
+                    })()}
+
                     <div style={{ display: 'flex', gap: 8 }}>
                       <Button size="sm" variant="ghost" onClick={() => {
                         // Clear local pick state only
-                        setBgReplPicks([]); setRaceReplPicks([]); setClassSkillPicks({})
+                        setBgReplPicks([]); setRaceReplPicks([]); setClassSkillPicks({}); setClassFeatureChoices({})
                       }}>Reset Selections</Button>
                     </div>
                   </div>
@@ -822,6 +1670,245 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
               </CardContent>
             </Card>
           ) : null}
+
+          {/* ASI & Feats */}
+          {(() => {
+            // Count available ASI slots from classes at levels 4,8,12,16,19 (demo rule).
+            const asiLevels = new Set([4, 8, 12, 16, 19])
+            const asiSlots = classes.reduce((sum, c) => sum + Array.from(asiLevels).filter(lv => c.level >= lv).length, 0)
+            // Each slot provides 2 points for ASIs or 1 feat (which consumes 2 points)
+            const totalPoints = asiSlots * 2
+            const spentPoints = (['str','dex','con','int','wis','cha'] as AbilityKey[]).reduce((s, k) => s + (asiAlloc[k] || 0), 0) + (selectedFeats.length * 2)
+            const remaining = Math.max(0, totalPoints - spentPoints)
+            const fa = finalAbility(abilities, race, asiAlloc)
+            const canIncrease = (k: AbilityKey) => remaining > 0 && fa[k] + 1 <= 20
+            const canDecrease = (k: AbilityKey) => (asiAlloc[k] || 0) > 0
+            const toggleFeat = (id: string) => {
+              setSelectedFeats((prev) => {
+                const has = prev.includes(id)
+                if (has) return prev.filter(f => f !== id)
+                if (remaining < 2) return prev // not enough points
+                return [...prev, id]
+              })
+            }
+            // Only show card if there is at least one ASI slot from any class
+            if (asiSlots === 0) return null
+            return (
+              <Card>
+                <CardHeader><CardTitle><Sparkles size={16} style={{ marginRight: 6 }} />ASI & Feats</CardTitle></CardHeader>
+                <CardContent>
+                  <div style={{ display: 'grid', gap: 12 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                      <Pill>ASI slots {asiSlots}</Pill>
+                      <Pill>Points {spentPoints} / {totalPoints}</Pill>
+                      <Pill>Remaining {remaining}</Pill>
+                    </div>
+                    {/* ASI allocation */}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 8 }}>
+                      {(['str','dex','con','int','wis','cha'] as AbilityKey[]).map((k) => (
+                        <div key={k} style={{ padding: 8, borderRadius: 10, border: '1px solid #e2e8f0', background: '#f8fafc', display: 'grid', gap: 6 }}>
+                          <div style={{ fontSize: 10, textTransform: 'uppercase', color: '#64748b' }}>{k}</div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <Button size="icon" variant="outline" onClick={() => setAsiAlloc((prev) => ({ ...prev, [k]: Math.max(0, (prev[k] || 0) - 1) }))} disabled={!canDecrease(k)}>−</Button>
+                            <div style={{ fontWeight: 600, minWidth: 44, textAlign: 'center' }}>{fa[k]}{asiAlloc[k] ? ` (+${asiAlloc[k]})` : ''}</div>
+                            <Button size="icon" variant="outline" onClick={() => {
+                              if (!canIncrease(k)) return
+                              setAsiAlloc((prev) => ({ ...prev, [k]: (prev[k] || 0) + 1 }))
+                            }} disabled={!canIncrease(k)}>+</Button>
+                          </div>
+                          <div style={{ fontSize: 12, color: '#64748b' }}>mod {mod(fa[k]) >= 0 ? '+' : ''}{mod(fa[k])}</div>
+                        </div>
+                      ))}
+                    </div>
+                    {/* Feats */}
+                    <div style={{ display: 'grid', gap: 6 }}>
+                      <div style={{ fontSize: 12, color: '#64748b' }}>Feats (each costs 2 points)</div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                        {FEATS.map((f) => {
+                          const sel = selectedFeats.includes(f.id)
+                          const full = remaining < 2
+                          return (
+                            <Button key={f.id} size="sm" variant={sel ? 'default' : 'outline'} disabled={!sel && full} onClick={() => toggleFeat(f.id)} title={f.text} style={{ opacity: !sel && full ? 0.6 : 1 }}>{f.name}</Button>
+                          )
+                        })}
+                      </div>
+                      {/* Prodigy configuration */}
+                      {selectedFeats.includes('prodigy') ? (
+                        <div style={{ marginTop: 6, padding: 8, borderRadius: 8, border: '1px solid #e2e8f0', background: '#fff' }}>
+                          <div style={{ fontSize: 12, color: '#64748b', marginBottom: 6 }}>Prodigy: choose a skill to gain proficiency (or expertise if already proficient)</div>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                            {SKILLS.map((s) => {
+                              const chosen = featChoices.prodigySkill === s.id
+                              return (
+                                <Button key={s.id} size="sm" variant={chosen ? 'default' : 'outline'} onClick={() => setFeatChoices((prev) => ({ ...prev, prodigySkill: s.id }))}>{s.name}</Button>
+                              )
+                            })}
+                          </div>
+                          {featChoices.prodigySkill ? (
+                            <div style={{ marginTop: 6, fontSize: 12, color: '#64748b' }}>Selected: {SKILLS.find(x => x.id === featChoices.prodigySkill)?.name}</div>
+                          ) : null}
+                        </div>
+                      ) : null}
+                    </div>
+                    {(selectedFeats.length > 0) ? (
+                      <div style={{ fontSize: 12, color: '#64748b' }}>Selected feats: {selectedFeats.map(fid => FEATS.find(f => f.id === fid)?.name || fid).join(', ')}</div>
+                    ) : null}
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <Button size="sm" variant="ghost" onClick={() => { setAsiAlloc({ str: 0, dex: 0, con: 0, int: 0, wis: 0, cha: 0 }); setSelectedFeats([]) }}>Reset ASI/Feats</Button>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )
+          })()}
+
+          {/* Spells */}
+          {(() => {
+            // Identify classes that have Spellcasting at current level
+            const casterEntries = classes.filter((c) => (c.level || 0) >= 1 && ['bard','cleric','wizard','druid','warlock','paladin','sorcerer','ranger'].includes(c.klass.id))
+            if (!casterEntries.length) return null
+            // Helper to get casting ability per class
+            const castingMod = (klassId: string) => {
+              const fa = finalAbility(abilities, race, asiAlloc)
+              const ab = klassId === 'bard' ? fa.cha
+                : klassId === 'cleric' ? fa.wis
+                : klassId === 'druid' ? fa.wis
+                : klassId === 'warlock' ? fa.cha
+                : klassId === 'paladin' ? fa.cha
+                : klassId === 'sorcerer' ? fa.cha
+                : klassId === 'ranger' ? fa.wis
+                : fa.int
+              return { mod: mod(ab), score: ab }
+            }
+            const pb = proficiencyBonus(derived.totalLevel)
+            // Demo limits:
+            // Bard Ctr:2, L1:2; Cleric Ctr:3, Prepared1 = max(1, WIS mod + cleric level); Wizard Ctr:3, L1:3
+            // Druid Ctr:2, Prepared1 = max(1, WIS mod + druid level)
+            // Warlock Ctr:2, L1:2 (simplified)
+            // Paladin: no cantrips, L1 prepared (simplified demo): Prepared1 = max(1, CHA mod + paladin level)
+            // Sorcerer: Ctr:4, L1:2 (simplified early levels)
+            // Ranger: no cantrips (PHB), prepare L1 = max(1, WIS mod + ranger level)
+            const limits = {
+              bard: { cantrips: 2, level1: 2, prepared1: 0 },
+              cleric: { cantrips: 3, level1: 0, prepared1: Math.max(1, castingMod('cleric').mod + (classes.find(c=>c.klass.id==='cleric')?.level || 1)) },
+              wizard: { cantrips: 3, level1: 3, prepared1: 0 },
+              druid: { cantrips: 2, level1: 0, prepared1: Math.max(1, castingMod('druid').mod + (classes.find(c=>c.klass.id==='druid')?.level || 1)) },
+              warlock: { cantrips: 2, level1: 2, prepared1: 0 },
+              paladin: { cantrips: 0, level1: 0, prepared1: Math.max(1, castingMod('paladin').mod + (classes.find(c=>c.klass.id==='paladin')?.level || 1)) },
+              sorcerer: { cantrips: 4, level1: 2, prepared1: 0 },
+              ranger: { cantrips: 0, level1: 0, prepared1: Math.max(1, castingMod('ranger').mod + (classes.find(c=>c.klass.id==='ranger')?.level || 1)) },
+            } as const
+
+            const toggle = (klassId: string, spellId: string, prepared = false) => {
+              if (prepared) {
+                setPreparedSpells((prev) => {
+                  const curr = prev[klassId] || []
+                  const has = curr.includes(spellId)
+                  return { ...prev, [klassId]: has ? curr.filter((s) => s !== spellId) : [...curr, spellId] }
+                })
+              } else {
+                setKnownSpells((prev) => {
+                  const curr = prev[klassId] || []
+                  const has = curr.includes(spellId)
+                  return { ...prev, [klassId]: has ? curr.filter((s) => s !== spellId) : [...curr, spellId] }
+                })
+              }
+            }
+
+            return (
+              <Card>
+                <CardHeader><CardTitle><Sparkles size={16} style={{ marginRight: 6 }} />Spells</CardTitle></CardHeader>
+                <CardContent>
+                  <div style={{ display: 'grid', gap: 12 }}>
+                    {casterEntries.map((c) => {
+                      const kid = c.klass.id
+                      const { mod: cam, score: cascore } = castingMod(kid)
+                      const dc = 8 + pb + cam
+                      const atk = pb + cam
+                      const cantrips = SPELLS.filter((s) => s.level === 0 && s.classes.includes(kid))
+                      const level1 = SPELLS.filter((s) => s.level === 1 && s.classes.includes(kid))
+                      const known = knownSpells[kid] || []
+                      const prepared = preparedSpells[kid] || []
+                      const lim = (limits as any)[kid] || { cantrips: 0, level1: 0, prepared1: 0 }
+                      const knownCanCount = known.filter((id) => cantrips.some((s) => s.id === id)).length
+                      const knownL1Count = known.filter((id) => level1.some((s) => s.id === id)).length
+                      const prepL1Count = prepared.filter((id) => level1.some((s) => s.id === id)).length
+                      return (
+                        <div key={kid} style={{ padding: 8, borderRadius: 12, border: '1px solid #e2e8f0', background: '#f8fafc', display: 'grid', gap: 8 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                            <div style={{ fontWeight: 600 }}>{c.klass.name}</div>
+                            <Pill>Spell DC {dc}</Pill>
+                            <Pill>Spell Atk {atk >= 0 ? `+${atk}` : atk}</Pill>
+                            <div style={{ fontSize: 12, color: '#64748b' }}>Casting stat {
+                              kid === 'bard' ? 'CHA' :
+                              kid === 'cleric' ? 'WIS' :
+                              kid === 'druid' ? 'WIS' :
+                              kid === 'warlock' ? 'CHA' :
+                              kid === 'paladin' ? 'CHA' :
+                              kid === 'sorcerer' ? 'CHA' :
+                              kid === 'ranger' ? 'WIS' :
+                              'INT'
+                            } ({cascore} | {cam >= 0 ? `+${cam}` : cam})</div>
+                          </div>
+
+                          {/* Cantrips */}
+                          {!!lim.cantrips && (
+                            <div style={{ display: 'grid', gap: 6 }}>
+                              <div style={{ fontSize: 12, color: '#64748b' }}>Cantrips: pick {lim.cantrips - knownCanCount} more</div>
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                                {cantrips.map((sp) => {
+                                  const sel = known.includes(sp.id)
+                                  const full = knownCanCount >= lim.cantrips
+                                  return (
+                                    <Button key={sp.id} size="sm" variant={sel ? 'default' : 'outline'} disabled={!sel && full} onClick={() => toggle(kid, sp.id)} title={sp.text} style={{ opacity: !sel && full ? 0.6 : 1 }}>{sp.name}</Button>
+                                  )
+                                })}
+                              </div>
+                              <div style={{ fontSize: 12, color: '#64748b' }}>Selected {knownCanCount} / {lim.cantrips}</div>
+                            </div>
+                          )}
+
+                          {/* Level 1 known/prepared (known for bard/wizard/warlock) */}
+                          {['bard','wizard','warlock','sorcerer'].includes(kid) && !!lim.level1 && (
+                            <div style={{ display: 'grid', gap: 6 }}>
+                              <div style={{ fontSize: 12, color: '#64748b' }}>Level 1 Spells: pick {lim.level1 - knownL1Count} more</div>
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                                {level1.map((sp) => {
+                                  const sel = known.includes(sp.id)
+                                  const full = knownL1Count >= lim.level1
+                                  return (
+                                    <Button key={sp.id} size="sm" variant={sel ? 'default' : 'outline'} disabled={!sel && full} onClick={() => toggle(kid, sp.id)} title={sp.text} style={{ opacity: !sel && full ? 0.6 : 1 }}>{sp.name}</Button>
+                                  )
+                                })}
+                              </div>
+                              <div style={{ fontSize: 12, color: '#64748b' }}>Selected {knownL1Count} / {lim.level1}</div>
+                            </div>
+                          )}
+
+                          {/* Prepared casters: cleric, druid, paladin */}
+                          {['cleric','druid','paladin','ranger'].includes(kid) && lim.prepared1 > 0 && (
+                            <div style={{ display: 'grid', gap: 6 }}>
+                              <div style={{ fontSize: 12, color: '#64748b' }}>Prepared Level 1: pick {Math.max(0, lim.prepared1 - prepL1Count)} more (limit {lim.prepared1})</div>
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                                {level1.map((sp) => {
+                                  const sel = prepared.includes(sp.id)
+                                  const full = prepL1Count >= lim.prepared1
+                                  return (
+                                    <Button key={sp.id} size="sm" variant={sel ? 'default' : 'outline'} disabled={!sel && full} onClick={() => toggle(kid, sp.id, true)} title={sp.text} style={{ opacity: !sel && full ? 0.6 : 1 }}>{sp.name}</Button>
+                                  )
+                                })}
+                              </div>
+                              <div style={{ fontSize: 12, color: '#64748b' }}>Prepared {prepL1Count} / {lim.prepared1}</div>
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </CardContent>
+              </Card>
+            )
+          })()}
 
           {/* Skills */}
           <Card>
@@ -860,14 +1947,19 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
                   </div>
 
                   {(() => {
-                    const fa = finalAbility(abilities, race)
+                    const fa = finalAbility(abilities, race, asiAlloc)
                     const pb = proficiencyBonus(derived.totalLevel)
                     // Ability sort order preference (CHA, CON, DEX, INT, STR, WIS)
                     const abilityOrder: AbilityKey[] = ['cha', 'con', 'dex', 'int', 'str', 'wis']
                     const profOrder: ProfType[] = ['expert', 'prof', 'half', 'none']
                     const items = SKILLS.map((s) => {
                       const base = mod(fa[s.ability])
-                      const t: ProfType = skillProf[s.id] ?? 'none'
+                      let t: ProfType = skillProf[s.id] ?? 'none'
+                      // Feat: Prodigy handling (proficiency if none, expertise if already proficient)
+                      if (selectedFeats.includes('prodigy') && featChoices.prodigySkill === s.id) {
+                        if (t === 'none') t = 'prof'
+                        else if (t === 'prof') t = 'expert'
+                      }
                       const add = t === 'half' ? Math.floor(pb / 2) : t === 'prof' ? pb : t === 'expert' ? pb * 2 : 0
                       const total = base + add
                       return { ...s, base, add, total, t }
@@ -988,10 +2080,10 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
           </Card>
 
           {/* Equipment */}
-          <Card>
+      <Card>
             <CardHeader><CardTitle><Sword size={16} style={{ marginRight: 6 }} />Equipment & Loadout</CardTitle></CardHeader>
             <CardContent>
-              <div style={{ display: 'grid', gap: 12, gridTemplateColumns: '1fr 1fr' }}>
+        <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))' }}>
                 {/* Catalog column */}
                 <div style={{ display: 'grid', gap: 8 }}>
                   <div style={{ fontSize: 12, color: '#64748b' }}>Catalog</div>
@@ -1027,7 +2119,7 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
                   ) : null}
                   {/* Scrollable grid of items */}
                   <div style={{ maxHeight: 360, overflowY: 'auto', paddingRight: 4 }}>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 12 }}>
                       {filteredEquipment.length ? filteredEquipment.map((eq) => (
                         <ItemCard key={(eq as any).id} item={eq} onAdd={() => setLoadout((l) => dedupe([...l, eq]))} />
                       )) : (
@@ -1088,7 +2180,7 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
         </div>
 
         {/* Right: Live Summary */}
-        <aside style={{ display: 'grid', gap: 12 }}>
+  <aside style={{ display: 'grid', gap: 12, position: 'sticky', top: 76 }}>
           <Card>
             <CardHeader><CardTitle><Scale size={16} style={{ marginRight: 6 }} />Live Summary</CardTitle></CardHeader>
             <CardContent>
@@ -1107,6 +2199,7 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
                 <Labeled label="Speed"><Pill>{derived.speed} ft.</Pill></Labeled>
                 <Labeled label="HP @lvl"><Pill>{derived.hp}</Pill></Labeled>
                 <Labeled label="AC"><Pill>{derived.ac}</Pill></Labeled>
+                <Labeled label="Initiative"><Pill>{derived.initiative >= 0 ? `+${derived.initiative}` : derived.initiative}</Pill></Labeled>
                 <Labeled label="Background"><div>{background?.name || '—'}</div></Labeled>
               </div>
 
@@ -1114,11 +2207,11 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
               <div style={{ display: 'grid', gap: 8, marginTop: 12 }}>
                 <div style={{ fontSize: 12, color: '#64748b' }}>Abilities & Saves</div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
-                  {(['str','dex','con','int','wis','cha'] as AbilityKey[]).map((k) => (
+          {(['str','dex','con','int','wis','cha'] as AbilityKey[]).map((k) => (
                     <div key={k} style={{ padding: 8, borderRadius: 12, border: '1px solid #e2e8f0', background: '#f8fafc', display: 'grid', gap: 6 }}>
                       <div style={{ fontSize: 10, textTransform: 'uppercase', color: '#64748b' }}>{k}</div>
-                      <div style={{ fontWeight: 600 }}>{finalAbility(abilities, race)[k]}</div>
-                      <div style={{ fontSize: 12, color: '#64748b' }}>mod {mod(finalAbility(abilities, race)[k]) >= 0 ? '+' : ''}{mod(finalAbility(abilities, race)[k])}</div>
+            <div style={{ fontWeight: 600 }}>{finalAbility(abilities, race, asiAlloc)[k]}</div>
+            <div style={{ fontSize: 12, color: '#64748b' }}>mod {mod(finalAbility(abilities, race, asiAlloc)[k]) >= 0 ? '+' : ''}{mod(finalAbility(abilities, race, asiAlloc)[k])}</div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                         <span style={{ fontSize: 11, color: '#64748b' }}>Save</span>
                         <Pill>{derived.saves[k] >= 0 ? `+${derived.saves[k]}` : derived.saves[k]}</Pill>
@@ -1135,15 +2228,129 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
                   {derived.subactions.length ? derived.subactions.map((s) => <span key={s} style={badgeSecondary}>{s}</span>) : <div style={{ color: '#94a3b8' }}>None yet.</div>}
                 </div>
                 <div style={{ fontSize: 12, color: '#64748b', marginTop: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <Sparkles size={16} style={{ marginRight: 6 }} />Level 1 Features
+                  <Sparkles size={16} style={{ marginRight: 6 }} />Class Features
                 </div>
                 <div style={{ display: 'grid', gap: 8, fontSize: 14 }}>
-                  {classes.filter((c) => (c.level || 0) >= 1).flatMap((c) => (c.klass.level1 || []).map((f) => ({ f, cname: c.klass.name }))).map(({ f, cname }) => (
-                    <div key={cname + f.name} style={{ padding: 8, borderRadius: 12, border: '1px solid #e2e8f0', background: '#f8fafc' }}>
-                      <div style={{ fontWeight: 600 }}>{f.name} <span style={{ color: '#64748b', fontWeight: 400 }}>({cname})</span></div>
-                      <div style={{ color: '#64748b' }}>{f.text}</div>
-                    </div>
-                  ))}
+                  {(() => {
+                    // Gather class features up to the current level (if featuresByLevel provided)
+                    // plus subclass features when unlocked. Fall back to level1 only when no map is provided.
+                    const cards: Array<{ key: string; name: string; text: string; source: string }> = []
+                    classes.filter((c) => (c.level || 0) >= 1).forEach((c) => {
+                      const lvl = c.level || 1
+                      const map = c.klass.featuresByLevel
+                      // Build chosen decisions lookup for this class
+                      const decisions = CLASS_FEATURE_DECISIONS[c.klass.id] || []
+                      const chosenById: Record<string, { name: string; text: string } | { multi: Array<{ name: string; text: string }> }> = {}
+                      const chosenByName: Record<string, { name: string; text: string } | { multi: Array<{ name: string; text: string }> }> = {}
+                      decisions.forEach((d) => {
+                        if (lvl >= d.level) {
+                          const raw = classFeatureChoices[c.klass.id]?.[d.id]
+                          const ids = Array.isArray(raw) ? raw : (raw ? [raw] : [])
+                          const opts = ids.map(id => d.options.find(o => o.id === id)).filter(Boolean) as Array<{ id: string; name: string; text: string }>
+                          if (opts.length === 1) {
+                            const one = opts[0]
+                            chosenById[d.id] = { name: one.name, text: one.text }
+                            chosenByName[d.name] = { name: one.name, text: one.text }
+                          } else if (opts.length > 1) {
+                            const multi = opts.map(o => ({ name: o.name, text: o.text }))
+                            chosenById[d.id] = { multi }
+                            chosenByName[d.name] = { multi }
+                          }
+                        }
+                      })
+                      const consumedDecisionIds = new Set<string>()
+                      if (map) {
+                        const levels = Object.keys(map).map((n) => parseInt(n, 10)).filter((n) => n <= lvl).sort((a, b) => a - b)
+                        levels.forEach((ln) => {
+                          map[ln].forEach((f) => {
+                            // If a decision with the same feature name is chosen, merge it into this card
+                            const chosen = chosenByName[f.name]
+                            if (chosen) {
+                              const dec = decisions.find((d) => d.name === f.name)
+                              if (dec) consumedDecisionIds.add(dec.id)
+                            }
+                            const displayName = (() => {
+                              if (!chosen) return f.name
+                              if ('multi' in chosen) return `${f.name}: ${chosen.multi.map(m => m.name).join(', ')}`
+                              return `${f.name}: ${chosen.name}`
+                            })()
+                            const displayText = (() => {
+                              // Special-case ASI features: reflect ASI allocation or feat chosen
+                              const isASI = f.name.toLowerCase().includes('ability score improvement')
+                              if (isASI) {
+                                // Build a per-level view: if any feats are selected, summarize feats; otherwise show stat increases
+                                const incs = (['str','dex','con','int','wis','cha'] as AbilityKey[]).filter(k => (asiAlloc[k] || 0) > 0)
+                                const incStr = incs.length ? `ASI: ${incs.map(k => `${k.toUpperCase()} +${asiAlloc[k] || 0}`).join(', ')}` : ''
+                                const featStr = selectedFeats.length ? `Feats: ${selectedFeats.map(fid => FEATS.find(ff => ff.id === fid)?.name || fid).join(', ')}` : ''
+                                const parts = [incStr, featStr].filter(Boolean)
+                                return parts.length ? parts.join(' • ') : f.text
+                              }
+                              if (!chosen) return f.text
+                              if ('multi' in chosen) return chosen.multi.map(m => m.text).join(' • ')
+                              return chosen.text
+                            })()
+                            cards.push({ key: `${c.klass.id}-lvl${ln}-${f.name}`, name: displayName, text: displayText, source: `${c.klass.name} • L${ln}` })
+                          })
+                        })
+                      } else {
+                        (c.klass.level1 || []).forEach((f) => {
+                          const chosen = chosenByName[f.name]
+                          if (chosen) {
+                            const dec = decisions.find((d) => d.name === f.name)
+                            if (dec) consumedDecisionIds.add(dec.id)
+                          }
+                          const displayName = (() => {
+                            const chosen = chosenByName[f.name]
+                            if (!chosen) return f.name
+                            if ('multi' in chosen) return `${f.name}: ${chosen.multi.map(m => m.name).join(', ')}`
+                            return `${f.name}: ${chosen.name}`
+                          })()
+                          const displayText = (() => {
+                            // Special-case ASI features: reflect ASI allocation or feat chosen
+                            const isASI = f.name.toLowerCase().includes('ability score improvement')
+                            if (isASI) {
+                              const incs = (['str','dex','con','int','wis','cha'] as AbilityKey[]).filter(k => (asiAlloc[k] || 0) > 0)
+                              const incStr = incs.length ? `ASI: ${incs.map(k => `${k.toUpperCase()} +${asiAlloc[k] || 0}`).join(', ')}` : ''
+                              const featStr = selectedFeats.length ? `Feats: ${selectedFeats.map(fid => FEATS.find(ff => ff.id === fid)?.name || fid).join(', ')}` : ''
+                              const parts = [incStr, featStr].filter(Boolean)
+                              return parts.length ? parts.join(' • ') : f.text
+                            }
+                            const chosen = chosenByName[f.name]
+                            if (!chosen) return f.text
+                            if ('multi' in chosen) return chosen.multi.map(m => m.text).join(' • ')
+                            return chosen.text
+                          })()
+                          cards.push({ key: `${c.klass.id}-lvl1-${f.name}`, name: displayName, text: displayText, source: c.klass.name })
+                        })
+                      }
+                      // Add any remaining selected decisions that didn't match a base feature card
+                      decisions.forEach((d) => {
+                        if (lvl >= d.level && !consumedDecisionIds.has(d.id)) {
+                          const chosen = chosenById[d.id]
+                          if (chosen) {
+                            if ('multi' in chosen) {
+                              cards.push({ key: `${c.klass.id}-dec-${d.id}`, name: `${d.name}: ${chosen.multi.map(m => m.name).join(', ')}`, text: chosen.multi.map(m => m.text).join(' • '), source: c.klass.name })
+                            } else {
+                              cards.push({ key: `${c.klass.id}-dec-${d.id}`, name: `${d.name}: ${chosen.name}`, text: chosen.text, source: c.klass.name })
+                            }
+                          }
+                        }
+                      })
+
+                      if (c.subclass && lvl >= (c.subclass.unlockLevel || Infinity)) {
+                        const grants = c.subclass.grants?.subactions?.length ? `Grants: ${c.subclass.grants!.subactions!.join(', ')}` : 'Subclass features unlocked.'
+                        cards.push({ key: `${c.klass.id}-sub-${c.subclass.id}`, name: c.subclass.name, text: grants, source: c.klass.name })
+                      }
+                    })
+                    return cards.length ? cards.map((card) => (
+                      <div key={card.key} style={{ padding: 8, borderRadius: 12, border: '1px solid #e2e8f0', background: '#f8fafc' }}>
+                        <div style={{ fontWeight: 600 }}>{card.name} <span style={{ color: '#64748b', fontWeight: 400 }}>({card.source})</span></div>
+                        <div style={{ color: '#64748b' }}>{card.text}</div>
+                      </div>
+                    )) : (
+                      <div style={{ color: '#94a3b8' }}>No class features.</div>
+                    )
+                  })()}
                 </div>
               </div>
 
@@ -1186,8 +2393,8 @@ function Selector<T extends { id: string }>(props: { options: T[]; value: T; onC
   )
 }
 
-function AbilityEditor(props: { abilities: Record<AbilityKey, number>; onChange: (v: Record<AbilityKey, number>) => void; race: Race }) {
-  const final = finalAbility(props.abilities, props.race)
+function AbilityEditor(props: { abilities: Record<AbilityKey, number>; onChange: (v: Record<AbilityKey, number>) => void; race: Race; asi?: Record<AbilityKey, number> }) {
+  const final = finalAbility(props.abilities, props.race, props.asi)
   const order: AbilityKey[] = ['str', 'dex', 'con', 'int', 'wis', 'cha']
 
   // Roll pool + DnD state
@@ -1377,16 +2584,22 @@ function AbilityEditor(props: { abilities: Record<AbilityKey, number>; onChange:
   )
 }
 
-function finalAbility(abilities: Record<AbilityKey, number>, race: Race): Record<AbilityKey, number> {
+function finalAbility(abilities: Record<AbilityKey, number>, race: Race, asi?: Record<AbilityKey, number>): Record<AbilityKey, number> {
   const out: Record<AbilityKey, number> = { ...{ str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 }, ...abilities }
   Object.entries(race?.asis || {}).forEach(([k, inc]) => { const kk = k as AbilityKey; out[kk] = (out[kk] || 10) + (inc || 0) })
+  if (asi) {
+    (['str','dex','con','int','wis','cha'] as AbilityKey[]).forEach((k) => {
+      const inc = Math.max(0, Math.floor(asi[k] || 0))
+      out[k] = (out[k] || 10) + inc
+    })
+  }
   return out
 }
 
 function ItemCard({ item, onAdd }: { item: Equipment; onAdd: () => void }) {
   const tags = (item as any).tags as string[] | undefined
   return (
-    <div style={{ padding: 8, borderRadius: 10, border: '1px solid #e2e8f0', background: 'white', display: 'grid', gap: 6, minHeight: 90 }}>
+  <div style={{ padding: 10, borderRadius: 10, border: '1px solid #e2e8f0', background: 'white', display: 'grid', gap: 6, minHeight: 96 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         {item.type === 'weapon' && <Sword size={16} />}
         {item.type === 'shield' && <Shield size={16} />}
@@ -1690,7 +2903,7 @@ function SkillSourceGraph({ name, sources }: { name: string; sources: string[] }
     return src
   }
   const uniq = Array.from(new Set(sources))
-  const width = 360
+  const width = 480
   const srcCount = Math.max(1, uniq.length)
   const height = 80 + (srcCount > 3 ? Math.ceil((srcCount - 3) / 3) * 26 : 0)
   const centerX = width / 2
@@ -1708,7 +2921,12 @@ function SkillSourceGraph({ name, sources }: { name: string; sources: string[] }
   })
   return (
     <div style={{ width: '100%', overflowX: 'auto' }}>
-      <svg width={width} height={height} style={{ display: 'block' }}>
+      <svg
+        viewBox={`0 0 ${width} ${height}`}
+        width={width}
+        height={height}
+        style={{ display: 'block' }}
+      >
         {/* Skill node */}
         <g>
           <rect x={centerX - 60} y={skillY - 14} width={120} height={28} rx={8} ry={8} fill="#0ea5e9" stroke="#0284c7" />
@@ -1771,10 +2989,10 @@ function CombinedSourcesGraph({ skills, skillSources, race, raceReplPicks, class
 
   // Layout constants (three columns: fixed sources | skills | choice sources)
   const padding = 16
-  const colGap = 360 // further increased spacing between columns for clearer edges
+  const colGap = 256 // another tiny step for breathing room
   const rowGap = 32
-  const srcW = 200   // wider source/choice nodes
-  const skillW = 200 // wider skill nodes
+  const srcW = 160   // compact source/choice nodes
+  const skillW = 160 // compact skill nodes
   const leftX = padding + srcW / 2
   const midX = leftX + colGap
   const rightX = midX + colGap
@@ -1882,18 +3100,23 @@ function CombinedSourcesGraph({ skills, skillSources, race, raceReplPicks, class
 
   return (
     <div style={{ width: '100%', overflowX: 'auto' }}>
-      <svg width={width} height={height} style={{ display: 'block', background: '#ffffff' }}>
+      <svg
+        viewBox={`0 0 ${width} ${height}`}
+        width={width}
+        height={height}
+        style={{ display: 'block', background: '#ffffff' }}
+      >
         {/* Edges left->mid */}
         {edgesLeft.map((e) => (
-          <path key={e.key} d={`M ${e.sx} ${e.sy} C ${e.sx + 40} ${e.sy}, ${e.tx - 40} ${e.ty}, ${e.tx} ${e.ty}`} stroke="#94a3b8" strokeWidth={1.5} fill="none" />
+          <path key={e.key} d={`M ${e.sx} ${e.sy} C ${e.sx + 24} ${e.sy}, ${e.tx - 24} ${e.ty}, ${e.tx} ${e.ty}`} stroke="#94a3b8" strokeWidth={1.5} fill="none" />
         ))}
         {/* Dotted availability edges from Race to eligible skills (left->mid) */}
         {dottedEdgesLeft.map((e) => (
-          <path key={e.key} d={`M ${e.sx} ${e.sy} C ${e.sx + 40} ${e.sy}, ${e.tx - 40} ${e.ty}, ${e.tx} ${e.ty}`} stroke="#cbd5e1" strokeWidth={1.5} fill="none" strokeDasharray="4,4" />
+          <path key={e.key} d={`M ${e.sx} ${e.sy} C ${e.sx + 24} ${e.sy}, ${e.tx - 24} ${e.ty}, ${e.tx} ${e.ty}`} stroke="#cbd5e1" strokeWidth={1.5} fill="none" strokeDasharray="4,4" />
         ))}
         {/* Edges mid->right */}
         {edgesRight.map((e) => (
-          <path key={e.key} d={`M ${e.sx} ${e.sy} C ${e.sx + 40} ${e.sy}, ${e.tx - 40} ${e.ty}, ${e.tx} ${e.ty}`} stroke="#94a3b8" strokeWidth={1.5} fill="none" />
+          <path key={e.key} d={`M ${e.sx} ${e.sy} C ${e.sx + 24} ${e.sy}, ${e.tx - 24} ${e.ty}, ${e.tx} ${e.ty}`} stroke="#94a3b8" strokeWidth={1.5} fill="none" />
         ))}
         {/* Left fixed source nodes */}
         {leftNodes.map((n) => (
