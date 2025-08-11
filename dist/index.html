@@ -4,10 +4,18 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>TTRPG Character Creator</title>
-    <script type="module" crossorigin src="/assets/index-C8nXwzRl.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-Dvzdjni9.css">
+    <script type="module" crossorigin src="/assets/index-B6ieNbuL.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-ChxTsi65.css">
   </head>
   <body>
+    <script>
+      try {
+        const saved = localStorage.getItem('theme.v1');
+        const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+        const theme = saved === 'dark' || (!saved && prefersDark) ? 'dark' : 'light';
+        if (theme === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
+      } catch {}
+    </script>
     <div id="root"></div>
   </body>
 </html>

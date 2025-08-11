@@ -4,6 +4,17 @@ import { NodeOptimizer } from './NodeOptimizer.tsx'
 import ProgressionPlanner from './ProgressionPlanner.tsx'
 import CombatTracker from './CombatTracker.tsx'
 import EncounterSimulator from './EncounterSimulator.tsx'
+import { RulesProvider, useRules } from './RulesContext.tsx'
+import { RulesDrawer } from './RulesDrawer.tsx'
+
+function RulesButton() {
+  const { setOpen } = useRules()
+  return (
+    <button aria-label="Open rules" onClick={() => setOpen(true)} style={toggleBtn()}>
+      ⚙️ Rules
+    </button>
+  )
+}
 
 export function App() {
   const [tab, setTab] = useState<'builder' | 'planner' | 'optimizer' | 'combat' | 'sim'>('builder')
@@ -52,6 +63,7 @@ export function App() {
     } catch {}
   }, [tab, activePlanKey])
   return (
+    <RulesProvider>
     <div>
       <header style={{ position: 'sticky', top: 0, zIndex: 30, backdropFilter: 'saturate(1.2) blur(6px)', background: 'var(--header-bg)', borderBottom: '1px solid var(--header-border)' }}>
         <div style={{ maxWidth: 1200, margin: '0 auto', padding: '16px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
@@ -67,6 +79,7 @@ export function App() {
             <button aria-label="Toggle theme" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} style={toggleBtn()}>
               {theme === 'dark' ? '🌙 Dark' : '☀️ Light'}
             </button>
+            <RulesButton />
           </div>
         </div>
       </header>
@@ -86,7 +99,9 @@ export function App() {
           <EncounterSimulator />
         )}
       </main>
+      <RulesDrawer />
     </div>
+    </RulesProvider>
   )
 }
 

@@ -1,9 +1,16 @@
 import React, { useMemo, useState, useEffect, useRef } from 'react'
 import { Plus, Info, Redo2, Scale, Settings2, Shield, Sparkles, Sword, Undo2, List, Columns, LayoutGrid } from 'lucide-react'
+// Externalized shared types and data
+import type { AbilityKey, Background, Spell, MagicSchool, DamageType, Equipment, Feat } from '../data/types'
+import { SKILLS } from '../data/skills'
+import { BACKGROUNDS } from '../data/backgrounds'
+import { SPELLS, SPELL_META, ALL_SPELL_SCHOOLS, ALL_DAMAGE_TYPES, ALL_SAVE_ABILITIES } from '../data/spells'
+import { EQUIPMENT, SUBACTIONS_BY_ITEM } from '../data/equipment'
+import { FEATS } from '../data/feats'
 
 // ---------------- Demo Data (typed) ----------------
 
-type AbilityKey = 'str' | 'dex' | 'con' | 'int' | 'wis' | 'cha'
+// AbilityKey now imported from ../data/types
 
 type Race = {
   id: string
@@ -35,22 +42,7 @@ type Klass = {
   subclasses?: Subclass[]
 }
 
-type Equipment =
-  | { id: string; name: string; type: 'weapon'; group?: string; hands?: number; dmg: string; tags?: string[]; grants?: string[] }
-  | { id: string; name: string; type: 'shield'; ac?: number; hands?: number; tags?: string[]; grants?: string[] }
-  | { id: string; name: string; type: 'armor'; ac: number; dexMax: number; reqStr?: number; tags?: string[] }
-
-// Feats (demo)
-type Feat = { id: string; name: string; text: string }
-const FEATS: Feat[] = [
-  { id: 'gwm', name: 'Great Weapon Master', text: 'Power attacks with heavy weapons; bonus attack on crit/kill.' },
-  { id: 'ss', name: 'Sharpshooter', text: 'Long‑range shots without disadvantage; ignore cover; power shot.' },
-  { id: 'pam', name: 'Polearm Master', text: 'Bonus attack with polearms; opportunity on entering reach.' },
-  { id: 'cbe', name: 'Crossbow Expert', text: 'Ignore loading; no disadvantage in melee; bonus hand crossbow attack.' },
-  { id: 'alert', name: 'Alert', text: '+5 initiative; can’t be surprised while conscious; hidden foes don’t gain advantage.' },
-  { id: 'tough', name: 'Tough', text: 'Increase hit points by 2 per level.' },
-  { id: 'prodigy', name: 'Prodigy', text: 'Gain proficiency in one skill; if already proficient, gain expertise (demo).'},
-]
+// Feats and Equipment now imported from ../data
 
 const RACES: Race[] = [
   { id: 'human', name: 'Human (Base)', asis: { str: 1, dex: 1, con: 1, int: 1, wis: 1, cha: 1 }, speed: 30, traits: [ { id: 'versatile', name: 'Versatile', text: '+1 to all ability scores.' } ] },
@@ -507,81 +499,9 @@ const CLASSES: Klass[] = [
   },
 ]
 
-const EQUIPMENT: Equipment[] = [
-  // Weapons
-  { id: 'greataxe', name: 'Greataxe', type: 'weapon', group: 'martial', hands: 2, dmg: '1d12 slashing', tags: ['weapon', 'heavy', 'two‑handed'], grants: ['Melee Attack (Greataxe)'] },
-  { id: 'greatsword', name: 'Greatsword', type: 'weapon', group: 'martial', hands: 2, dmg: '2d6 slashing', tags: ['weapon', 'heavy', 'two‑handed'], grants: ['Melee Attack (Greatsword)'] },
-  { id: 'longsword', name: 'Longsword', type: 'weapon', group: 'martial', hands: 1, dmg: '1d8 slashing', tags: ['weapon', 'versatile'], grants: ['Melee Attack (Longsword)'] },
-  { id: 'rapier', name: 'Rapier', type: 'weapon', group: 'martial', hands: 1, dmg: '1d8 piercing', tags: ['weapon', 'finesse'], grants: ['Melee Attack (Rapier)'] },
-  { id: 'shortsword', name: 'Shortsword', type: 'weapon', group: 'martial', hands: 1, dmg: '1d6 piercing', tags: ['weapon', 'finesse', 'light'], grants: ['Melee Attack (Shortsword)'] },
-  { id: 'warhammer', name: 'Warhammer', type: 'weapon', group: 'martial', hands: 1, dmg: '1d8 bludgeoning', tags: ['weapon', 'versatile'], grants: ['Melee Attack (Warhammer)'] },
-  { id: 'mace', name: 'Mace', type: 'weapon', group: 'simple', hands: 1, dmg: '1d6 bludgeoning', tags: ['weapon', 'simple'], grants: ['Melee Attack (Mace)'] },
-  { id: 'handaxe', name: 'Handaxe', type: 'weapon', group: 'simple', hands: 1, dmg: '1d6 slashing', tags: ['weapon', 'simple', 'light', 'thrown'], grants: ['Melee Attack (Handaxe)', 'Ranged Attack (Handaxe)'] },
-  { id: 'dagger', name: 'Dagger', type: 'weapon', group: 'simple', hands: 1, dmg: '1d4 piercing', tags: ['weapon', 'simple', 'light', 'finesse', 'thrown'], grants: ['Melee Attack (Dagger)', 'Ranged Attack (Dagger)'] },
-  { id: 'spear', name: 'Spear', type: 'weapon', group: 'simple', hands: 1, dmg: '1d6 piercing', tags: ['weapon', 'simple', 'thrown', 'versatile'], grants: ['Melee Attack (Spear)', 'Ranged Attack (Spear)'] },
-  { id: 'longbow', name: 'Longbow', type: 'weapon', group: 'martial', hands: 2, dmg: '1d8 piercing', tags: ['weapon', 'heavy', 'two‑handed', 'ranged'], grants: ['Ranged Attack (Longbow)'] },
-  { id: 'shortbow', name: 'Shortbow', type: 'weapon', group: 'simple', hands: 2, dmg: '1d6 piercing', tags: ['weapon', 'two‑handed', 'ranged'], grants: ['Ranged Attack (Shortbow)'] },
-  { id: 'light-crossbow', name: 'Light Crossbow', type: 'weapon', group: 'simple', hands: 2, dmg: '1d8 piercing', tags: ['weapon', 'two‑handed', 'ranged', 'loading'], grants: ['Ranged Attack (Light Crossbow)'] },
-  { id: 'heavy-crossbow', name: 'Heavy Crossbow', type: 'weapon', group: 'martial', hands: 2, dmg: '1d10 piercing', tags: ['weapon', 'heavy', 'two‑handed', 'ranged', 'loading'], grants: ['Ranged Attack (Heavy Crossbow)'] },
+// Equipment and subactions moved to ../data/equipment
 
-  // Shields
-  { id: 'shield', name: 'Shield', type: 'shield', ac: 2, hands: 1, tags: ['shield'], grants: ['Raise Shield'] },
-
-  // Light Armor
-  { id: 'padded', name: 'Padded Armor', type: 'armor', ac: 11, dexMax: Number.POSITIVE_INFINITY, tags: ['armor', 'light'] },
-  { id: 'leather', name: 'Leather Armor', type: 'armor', ac: 11, dexMax: Number.POSITIVE_INFINITY, tags: ['armor', 'light'] },
-  { id: 'studded-leather', name: 'Studded Leather', type: 'armor', ac: 12, dexMax: Number.POSITIVE_INFINITY, tags: ['armor', 'light'] },
-
-  // Medium Armor
-  { id: 'scale-mail', name: 'Scale Mail', type: 'armor', ac: 14, dexMax: 2, tags: ['armor', 'medium'] },
-  { id: 'breastplate', name: 'Breastplate', type: 'armor', ac: 14, dexMax: 2, tags: ['armor', 'medium'] },
-  { id: 'half-plate', name: 'Half Plate', type: 'armor', ac: 15, dexMax: 2, tags: ['armor', 'medium'] },
-
-  // Heavy Armor
-  { id: 'chain', name: 'Chain Mail', type: 'armor', ac: 16, dexMax: 0, reqStr: 13, tags: ['armor', 'heavy'] },
-  { id: 'splint', name: 'Splint Armor', type: 'armor', ac: 17, dexMax: 0, reqStr: 15, tags: ['armor', 'heavy'] },
-  { id: 'plate', name: 'Plate Armor', type: 'armor', ac: 18, dexMax: 0, reqStr: 15, tags: ['armor', 'heavy'] },
-]
-
-const SUBACTIONS_BY_ITEM: Record<string, string[]> = {
-  greataxe: ['Melee Attack (Greataxe)'],
-  greatsword: ['Melee Attack (Greatsword)'],
-  longsword: ['Melee Attack (Longsword)'],
-  rapier: ['Melee Attack (Rapier)'],
-  shortsword: ['Melee Attack (Shortsword)'],
-  warhammer: ['Melee Attack (Warhammer)'],
-  mace: ['Melee Attack (Mace)'],
-  handaxe: ['Melee Attack (Handaxe)', 'Ranged Attack (Handaxe)'],
-  dagger: ['Melee Attack (Dagger)', 'Ranged Attack (Dagger)'],
-  spear: ['Melee Attack (Spear)', 'Ranged Attack (Spear)'],
-  longbow: ['Ranged Attack (Longbow)'],
-  shortbow: ['Ranged Attack (Shortbow)'],
-  'light-crossbow': ['Ranged Attack (Light Crossbow)'],
-  'heavy-crossbow': ['Ranged Attack (Heavy Crossbow)'],
-  shield: ['Raise Shield'],
-}
-
-// Skills (demo)
-const SKILLS: Array<{ id: string; name: string; ability: AbilityKey }> = [
-  { id: 'acrobatics', name: 'Acrobatics', ability: 'dex' },
-  { id: 'animal', name: 'Animal Handling', ability: 'wis' },
-  { id: 'arcana', name: 'Arcana', ability: 'int' },
-  { id: 'athletics', name: 'Athletics', ability: 'str' },
-  { id: 'deception', name: 'Deception', ability: 'cha' },
-  { id: 'history', name: 'History', ability: 'int' },
-  { id: 'insight', name: 'Insight', ability: 'wis' },
-  { id: 'intimidation', name: 'Intimidation', ability: 'cha' },
-  { id: 'investigation', name: 'Investigation', ability: 'int' },
-  { id: 'medicine', name: 'Medicine', ability: 'wis' },
-  { id: 'nature', name: 'Nature', ability: 'int' },
-  { id: 'perception', name: 'Perception', ability: 'wis' },
-  { id: 'performance', name: 'Performance', ability: 'cha' },
-  { id: 'persuasion', name: 'Persuasion', ability: 'cha' },
-  { id: 'religion', name: 'Religion', ability: 'int' },
-  { id: 'sleight', name: 'Sleight of Hand', ability: 'dex' },
-  { id: 'stealth', name: 'Stealth', ability: 'dex' },
-  { id: 'survival', name: 'Survival', ability: 'wis' },
-]
+// Skills moved to ../data/skills
 
 // Grants mapping (demo): map certain race traits and classes to skill choices.
 const RACE_TRAIT_SKILLS: Record<string, string[]> = {
@@ -847,76 +767,9 @@ const CLASS_FEATURE_DECISIONS: Record<string, ClassFeatureDecisionSpec[]> = {
   ],
 }
 
-// Backgrounds (demo)
-type Background = {
-  id: string
-  name: string
-  skills?: string[]
-  tools?: string[]
-  languages?: number
-  feature?: { name: string; text: string }
-}
-const BACKGROUNDS: Background[] = [
-  { id: 'soldier', name: 'Soldier', skills: ['athletics', 'intimidation'], tools: ['gaming set', 'vehicles (land)'], feature: { name: 'Military Rank', text: 'You have a military rank and can exert influence.' } },
-  { id: 'acolyte', name: 'Acolyte', skills: ['insight', 'religion'], languages: 2, feature: { name: 'Shelter of the Faithful', text: 'You command respect from those who share your faith.' } },
-  { id: 'criminal', name: 'Criminal', skills: ['deception', 'stealth'], tools: ['thieves’ tools', 'gaming set'], feature: { name: 'Criminal Contact', text: 'You have a reliable and trustworthy contact.' } },
-  { id: 'sage', name: 'Sage', skills: ['arcana', 'history'], languages: 2, feature: { name: 'Researcher', text: 'You can find information with ease in libraries and archives.' } },
-  { id: 'folk-hero', name: 'Folk Hero', skills: ['animal', 'survival'], tools: ['artisan’s tools', 'vehicles (land)'], feature: { name: 'Rustic Hospitality', text: 'You fit in among common folk and can find shelter among them.' } },
-  { id: 'urchin', name: 'Urchin', skills: ['sleight', 'stealth'], tools: ['disguise kit', 'thieves’ tools'], feature: { name: 'City Secrets', text: 'You know the secret patterns and flow to cities and can find passages through the urban sprawl.' } },
-  // Added backgrounds
-  { id: 'noble', name: 'Noble', skills: ['history', 'persuasion'], tools: ['gaming set'], languages: 1, feature: { name: 'Position of Privilege', text: 'People are inclined to think the best of you. You are welcome in high society.' } },
-  { id: 'outlander', name: 'Outlander', skills: ['athletics', 'survival'], tools: ['musical instrument'], feature: { name: 'Wanderer', text: 'You have an excellent memory for maps and geography; you can find food and fresh water for yourself and up to five others each day.' } },
-  { id: 'sailor', name: 'Sailor', skills: ['athletics', 'perception'], tools: ["navigator's tools", 'vehicles (water)'], feature: { name: "Ship's Passage", text: 'You can secure free passage on a sailing ship for yourself and your companions.' } },
-]
+// Backgrounds moved to ../data/backgrounds
 
-// Spells (demo)
-type Spell = { id: string; name: string; level: 0 | 1; classes: string[]; text: string }
-const SPELLS: Spell[] = [
-  // Cantrips (Level 0)
-  { id: 'vicious-mockery', name: 'Vicious Mockery', level: 0, classes: ['bard'], text: 'Insult a creature; it takes psychic damage and has disadvantage on next attack.' },
-  { id: 'prestidigitation', name: 'Prestidigitation', level: 0, classes: ['bard', 'wizard'], text: 'Minor magical tricks and sensory effects.' },
-  { id: 'mage-hand', name: 'Mage Hand', level: 0, classes: ['bard', 'wizard'], text: 'Create a spectral hand to manipulate objects.' },
-  { id: 'friends', name: 'Friends', level: 0, classes: ['bard'], text: 'Gain advantage on CHA checks directed at one creature.' },
-  // Druid cantrips
-  { id: 'produce-flame', name: 'Produce Flame', level: 0, classes: ['druid'], text: 'Conjure a flame in your hand; shed light and can hurl for fire damage.' },
-  { id: 'shillelagh', name: 'Shillelagh', level: 0, classes: ['druid'], text: 'Imbue a club or quarterstaff; use WIS for attack/damage.' },
-  { id: 'thorn-whip', name: 'Thorn Whip', level: 0, classes: ['druid'], text: 'Create a vine whip; pull a creature closer on a hit.' },
-  { id: 'guidance', name: 'Guidance', level: 0, classes: ['cleric'], text: 'Add 1d4 to one ability check.' },
-  { id: 'sacred-flame', name: 'Sacred Flame', level: 0, classes: ['cleric'], text: 'Radiant fire descends on a creature; DEX save for no damage.' },
-  { id: 'thaumaturgy', name: 'Thaumaturgy', level: 0, classes: ['cleric'], text: 'Manifest minor wonders to show divine power.' },
-  { id: 'spare-the-dying', name: 'Spare the Dying', level: 0, classes: ['cleric'], text: 'Stabilize a creature at 0 HP.' },
-  { id: 'fire-bolt', name: 'Fire Bolt', level: 0, classes: ['wizard'], text: 'Ranged spell attack for fire damage.' },
-  { id: 'ray-of-frost', name: 'Ray of Frost', level: 0, classes: ['wizard'], text: 'Ray of cold that slows the target.' },
-  // Warlock cantrip
-  { id: 'eldritch-blast', name: 'Eldritch Blast', level: 0, classes: ['warlock'], text: 'Ranged spell attack dealing force damage.' },
-  // Level 1
-  { id: 'healing-word', name: 'Healing Word', level: 1, classes: ['bard', 'cleric'], text: 'Bonus action healing at range.' },
-  { id: 'tashas-hideous-laughter', name: "Tasha's Hideous Laughter", level: 1, classes: ['bard'], text: 'A creature falls prone with laughter; WIS save ends.' },
-  { id: 'dissonant-whispers', name: 'Dissonant Whispers', level: 1, classes: ['bard'], text: 'Psychic damage; target may flee immediately.' },
-  { id: 'faerie-fire', name: 'Faerie Fire', level: 1, classes: ['bard'], text: 'Outline creatures; attacks against them have advantage.' },
-  { id: 'charm-person', name: 'Charm Person', level: 1, classes: ['bard', 'wizard'], text: 'Attempt to charm a humanoid.' },
-  { id: 'cure-wounds', name: 'Cure Wounds', level: 1, classes: ['cleric'], text: 'Touch-based healing.' },
-  { id: 'bless', name: 'Bless', level: 1, classes: ['cleric'], text: 'Add 1d4 to allies’ attack rolls and saves.' },
-  { id: 'guiding-bolt', name: 'Guiding Bolt', level: 1, classes: ['cleric'], text: 'Radiant damage and advantage for next attack against target.' },
-  { id: 'sanctuary', name: 'Sanctuary', level: 1, classes: ['cleric'], text: 'Ward a creature against attack; attackers must make a save.' },
-  // Druid level 1
-  { id: 'entangle', name: 'Entangle', level: 1, classes: ['druid'], text: 'Grasping weeds restrain creatures in a 20‑foot square.' },
-  { id: 'goodberry', name: 'Goodberry', level: 1, classes: ['druid'], text: 'Create ten berries that heal when eaten.' },
-  // Ranger level 1 (also on druid in PHB, included for ranger demo availability)
-  { id: 'hunters-mark', name: "Hunter's Mark", level: 1, classes: ['ranger'], text: 'Mark a target to deal extra damage and track it more easily.' },
-  { id: 'ensnaring-strike', name: 'Ensnaring Strike', level: 1, classes: ['ranger'], text: 'Vines spring forth to restrain the target on a hit.' },
-  // Paladin level 1
-  { id: 'compelled-duel', name: 'Compelled Duel', level: 1, classes: ['paladin'], text: 'Compel a creature to duel you; disadvantage to attack others.' },
-  { id: 'divine-favor', name: 'Divine Favor', level: 1, classes: ['paladin'], text: 'Your weapon attacks deal +1d4 radiant damage.' },
-  { id: 'shield-of-faith', name: 'Shield of Faith', level: 1, classes: ['paladin'], text: 'A shimmering field grants +2 AC for duration.' },
-  { id: 'magic-missile', name: 'Magic Missile', level: 1, classes: ['wizard'], text: 'Automatically hits with force darts.' },
-  { id: 'shield-spell', name: 'Shield', level: 1, classes: ['wizard'], text: '+5 AC as a reaction until your next turn.' },
-  { id: 'mage-armor', name: 'Mage Armor', level: 1, classes: ['wizard'], text: 'Protective magical force; set AC when unarmored.' },
-  { id: 'sleep', name: 'Sleep', level: 1, classes: ['wizard'], text: 'Magically send creatures into slumber.' },
-  // Warlock level 1
-  { id: 'hex', name: 'Hex', level: 1, classes: ['warlock'], text: 'Curse a creature; deal extra damage and disadvantage on checks.' },
-  { id: 'armor-of-agathys', name: 'Armor of Agathys', level: 1, classes: ['warlock'], text: 'Gain temporary HP and deal cold damage to attackers.' },
-]
+// Spells, metadata, and derived constants moved to ../data/spells
 
 // ---------------- Utilities ----------------
 
@@ -940,14 +793,16 @@ function getHands(i: Equipment): number {
 
 type Issue = { level: 'error' | 'warn' | 'hint'; msg: string }
 
-function validateChoice(state: AppState): Issue[] {
+type RuleOpts = { tceActive?: boolean; tceMode?: '2+1' | '1+1+1'; tceAlloc?: Record<AbilityKey, number>; multiclassReqs?: boolean }
+
+function validateChoice(state: AppState, opts?: RuleOpts): Issue[] {
   const issues: Issue[] = []
   const hasShield = state.loadout.some((i) => i.type === 'shield')
   const armor = state.loadout.find((i) => i.type === 'armor') as Extract<Equipment, { type: 'armor' }> | undefined
   const handsInUse = state.loadout.reduce((acc, i) => acc + getHands(i), 0)
   const twoHandedWeapon = state.loadout.find((i) => (i as any).tags?.includes('two‑handed'))
 
-  const fa = finalAbility(state.abilities, state.race, state.asi)
+  const fa = finalAbility(state.abilities, state.race, state.asi, opts)
   if (twoHandedWeapon && hasShield) {
     issues.push({ level: 'error', msg: 'Two‑handed weapon cannot be used with a shield equipped.' })
   }
@@ -968,14 +823,48 @@ function validateChoice(state: AppState): Issue[] {
     issues.push({ level: 'error', msg: 'You cannot hold more than two hands worth of equipment.' })
   }
 
+  // Multiclass prerequisites (simplified 5e): enforce if enabled
+  if (opts?.multiclassReqs) {
+    const reqs: Record<string, Array<{ ab: AbilityKey; min: number }> | ((fa: Record<AbilityKey, number>) => boolean)> = {
+      barbarian: [{ ab: 'str', min: 13 }],
+      bard: [{ ab: 'cha', min: 13 }],
+      cleric: [{ ab: 'wis', min: 13 }],
+      druid: [{ ab: 'wis', min: 13 }],
+      fighter: (fa) => (fa.str >= 13 || fa.dex >= 13),
+      monk: [{ ab: 'dex', min: 13 }, { ab: 'wis', min: 13 }],
+      paladin: [{ ab: 'str', min: 13 }, { ab: 'cha', min: 13 }],
+      ranger: [{ ab: 'dex', min: 13 }, { ab: 'wis', min: 13 }],
+      rogue: [{ ab: 'dex', min: 13 }],
+      sorcerer: [{ ab: 'cha', min: 13 }],
+      warlock: [{ ab: 'cha', min: 13 }],
+      wizard: [{ ab: 'int', min: 13 }],
+      bardic: [],
+    }
+    state.classes.forEach((c, idx) => {
+      if (!c?.klass?.id) return
+      const r = reqs[c.klass.id]
+      if (!r) return
+      let ok = true
+      if (typeof r === 'function') ok = r(fa)
+      else ok = (r as Array<{ ab: AbilityKey; min: number }>).every((rq) => (fa[rq.ab] || 0) >= rq.min)
+      if (!ok) {
+        issues.push({ level: 'warn', msg: `${c.klass.name} requires ${(() => {
+          if (typeof r === 'function') return 'ability prerequisites (Dex or Str 13 for Fighter)'
+          const parts = (r as Array<{ ab: AbilityKey; min: number }>).map((rq) => `${rq.ab.toUpperCase()} ${rq.min}+`)
+          return parts.join(' & ')
+        })()} to multiclass.` })
+      }
+    })
+  }
+
   return issues
 }
 
 // ---------------- Derived & Simulation ----------------
 
-function computeDerived(state: AppState) {
+function computeDerived(state: AppState, opts?: RuleOpts) {
   // Use final abilities including race ASIs and allocated ASIs
-  const fa = finalAbility(state.abilities, state.race, state.asi)
+  const fa = finalAbility(state.abilities, state.race, state.asi, opts)
   const dexMod = mod(fa.dex)
   const conMod = mod(fa.con)
   const strMod = mod(fa.str)
@@ -1016,7 +905,7 @@ function computeDerived(state: AppState) {
   const subactions = dedupe([...classSubs, ...subclassSubs, ...itemSubs])
 
   // Saving throws (union of class save proficiencies)
-  const final = finalAbility(state.abilities, state.race, state.asi)
+  const final = finalAbility(state.abilities, state.race, state.asi, opts)
   const prof = proficiencyBonus(totalLevel)
   const saveProfs = dedupe(state.classes.flatMap((c) => c.klass.saves ?? []))
   const saves: Record<AbilityKey, number> = {
@@ -1164,10 +1053,33 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
   // Spells state (simple per-class storage)
   const [knownSpells, setKnownSpells] = useState<Record<string, string[]>>({})
   const [preparedSpells, setPreparedSpells] = useState<Record<string, string[]>>({})
+  // Spells UI filter
+  const [spellsQuery, setSpellsQuery] = useState('')
+  const [spellFilters, setSpellFilters] = useState<{
+    levels: { 0: boolean; 1: boolean; 2: boolean; 3: boolean }
+    selectedOnly: boolean
+    schools: MagicSchool[]
+    damage: DamageType[]
+    saves: (AbilityKey | 'none')[]
+  }>({
+    levels: { 0: true, 1: true, 2: true, 3: true },
+    selectedOnly: false,
+    schools: [],
+    damage: [],
+    saves: [],
+  })
+  const [spellsFiltersOpen, setSpellsFiltersOpen] = useState(false)
   // ASI & Feats state
   const [asiAlloc, setAsiAlloc] = useState<Record<AbilityKey, number>>({ str: 0, dex: 0, con: 0, int: 0, wis: 0, cha: 0 })
   const [selectedFeats, setSelectedFeats] = useState<string[]>([])
   const [featChoices, setFeatChoices] = useState<Record<string, any>>({})
+  // Rules & options
+  const [rulesOpen, setRulesOpen] = useState(false)
+  const rulesRef = useRef<HTMLDivElement | null>(null)
+  const [rules, setRules] = useState<{ tceCustomAsi: boolean; multiclassReqs: boolean }>({ tceCustomAsi: false, multiclassReqs: false })
+  const [tceMode, setTceMode] = useState<'2+1' | '1+1+1'>('2+1')
+  const emptyAlloc: Record<AbilityKey, number> = { str: 0, dex: 0, con: 0, int: 0, wis: 0, cha: 0 }
+  const [tceAlloc, setTceAlloc] = useState<Record<AbilityKey, number>>({ ...emptyAlloc, str: 2, dex: 1 })
   // Persistence (autosave/restore)
   const BUILDER_STORAGE_KEY = 'characterBuilder.v1'
   const restoredRef = useRef(false)
@@ -1190,8 +1102,8 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
   feats: selectedFeats,
   featChoices,
   }
-  const derived = useMemo(() => computeDerived(state), [state])
-  const issues = useMemo(() => validateChoice(state), [state])
+  const derived = useMemo(() => computeDerived(state, { tceActive: rules.tceCustomAsi, tceMode, tceAlloc }), [state, rules.tceCustomAsi, tceMode, JSON.stringify(tceAlloc)])
+  const issues = useMemo(() => validateChoice(state, { tceActive: rules.tceCustomAsi, tceMode, tceAlloc, multiclassReqs: rules.multiclassReqs }), [state, rules.tceCustomAsi, rules.multiclassReqs, tceMode, JSON.stringify(tceAlloc)])
   // Removed toy combat readiness computation
 
   // Detect pending class feature decisions (e.g., subclass unlocked but not chosen)
@@ -1367,10 +1279,28 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
           if (saved.asiAlloc && typeof saved.asiAlloc === 'object') setAsiAlloc(saved.asiAlloc)
           if (Array.isArray(saved.selectedFeats)) setSelectedFeats(saved.selectedFeats)
           if (saved.featChoices && typeof saved.featChoices === 'object') setFeatChoices(saved.featChoices)
+          // Rules restore
+          if (saved.rules && typeof saved.rules === 'object') {
+            setRules({
+              tceCustomAsi: !!saved.rules.tceCustomAsi,
+              multiclassReqs: !!saved.rules.multiclassReqs,
+            })
+            if (saved.rules.tceMode === '1+1+1' || saved.rules.tceMode === '2+1') setTceMode(saved.rules.tceMode)
+            if (saved.rules.tceAlloc && typeof saved.rules.tceAlloc === 'object') setTceAlloc({ ...emptyAlloc, ...saved.rules.tceAlloc })
+          }
           if (typeof saved.showCompleted === 'boolean') setShowCompleted(saved.showCompleted)
           if (Array.isArray(saved.catalogTags)) setCatalogTags(saved.catalogTags)
           if (typeof saved.catalogQuery === 'string') setCatalogQuery(saved.catalogQuery)
           if (typeof saved.catalogFiltersOpen === 'boolean') setCatalogFiltersOpen(saved.catalogFiltersOpen)
+          if (saved.spellFilters && typeof saved.spellFilters === 'object') {
+            setSpellFilters((prev) => ({
+              levels: saved.spellFilters.levels ?? prev.levels,
+              selectedOnly: saved.spellFilters.selectedOnly ?? prev.selectedOnly,
+              schools: Array.isArray(saved.spellFilters.schools) ? saved.spellFilters.schools : prev.schools,
+              damage: Array.isArray(saved.spellFilters.damage) ? saved.spellFilters.damage : prev.damage,
+              saves: Array.isArray(saved.spellFilters.saves) ? saved.spellFilters.saves : prev.saves,
+            }))
+          }
         }
       }
     } catch {}
@@ -1408,11 +1338,14 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
         asiAlloc,
         selectedFeats,
         featChoices,
+  // Rules
+  rules: { tceCustomAsi: rules.tceCustomAsi, multiclassReqs: rules.multiclassReqs, tceMode, tceAlloc },
         // Minor UI prefs
         showCompleted,
         catalogQuery,
         catalogTags,
         catalogFiltersOpen,
+  spellFilters,
         _ts: Date.now(),
       }
       localStorage.setItem(BUILDER_STORAGE_KEY, JSON.stringify(payload))
@@ -1439,10 +1372,14 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
     JSON.stringify(asiAlloc),
     JSON.stringify(selectedFeats),
     JSON.stringify(featChoices),
+  JSON.stringify(rules),
+  tceMode,
+  JSON.stringify(tceAlloc),
     showCompleted,
     catalogQuery,
     JSON.stringify(catalogTags),
     catalogFiltersOpen,
+  JSON.stringify(spellFilters),
   ])
 
   // -------- Export / Import helpers --------
@@ -1471,6 +1408,8 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
       asiAlloc,
       selectedFeats,
       featChoices,
+  // Rules
+  rules: { tceCustomAsi: rules.tceCustomAsi, multiclassReqs: rules.multiclassReqs, tceMode, tceAlloc },
       // Minor UI prefs that are useful if sharing
       skillTab,
       skillLayout,
@@ -1602,6 +1541,13 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
       if (typeof get('skillTab') === 'string') setSkillTab(get('skillTab') === 'sources' ? 'sources' : 'list')
       if (typeof get('skillLayout') === 'string') setSkillLayout(get('skillLayout'))
       if (typeof get('skillSort') === 'string') setSkillSort(get('skillSort'))
+      // Rules (optional)
+      const impRules = get('rules')
+      if (impRules && typeof impRules === 'object') {
+        setRules({ tceCustomAsi: !!impRules.tceCustomAsi, multiclassReqs: !!impRules.multiclassReqs })
+        if (impRules.tceMode === '1+1+1' || impRules.tceMode === '2+1') setTceMode(impRules.tceMode)
+        if (impRules.tceAlloc && typeof impRules.tceAlloc === 'object') setTceAlloc({ ...emptyAlloc, ...impRules.tceAlloc })
+      }
     } catch (e) {
       throw e
     }
@@ -1828,7 +1774,7 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
           </label>
           <Button size="sm" variant="outline" onClick={undo}><Undo2 size={16} style={{ marginRight: 6 }} />Undo</Button>
           <Button size="sm" variant="outline" onClick={redo}><Redo2 size={16} style={{ marginRight: 6 }} />Redo</Button>
-          <Button
+      <Button
             size="sm"
             variant="outline"
             onClick={() => {
@@ -1863,19 +1809,96 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
               setCatalogFiltersOpen(false)
               setHistory([])
               setFuture([])
+        // Reset rules and TCE controls
+        setRules({ tceCustomAsi: false, multiclassReqs: false })
+        setTceMode('2+1')
+        setTceAlloc({ str: 2, dex: 1, con: 0, int: 0, wis: 0, cha: 0 })
+        setRulesOpen(false)
             }}
           >Reset Character</Button>
           <Button size="sm" onClick={snapshot}><Settings2 size={16} style={{ marginRight: 6 }} />Save Draft</Button>
           <Button size="sm" variant="outline" onClick={exportToFile}>Export JSON</Button>
           <input ref={importInputRef} type="file" accept="application/json" style={{ display: 'none' }} onChange={onImportFileSelected} />
           <Button size="sm" variant="outline" onClick={() => importInputRef.current?.click()}>Import JSON</Button>
+          {/* Rules menu */}
+          <div style={{ position: 'relative' }} ref={rulesRef}>
+            <Button size="sm" onClick={() => setRulesOpen((v) => !v)}><Settings2 size={16} style={{ marginRight: 6 }} />Rules</Button>
+            {rulesOpen ? (
+              <div style={{ position: 'absolute', right: 0, top: '100%', marginTop: 6, background: 'var(--card-bg)', border: '1px solid var(--muted-border)', borderRadius: 8, boxShadow: '0 8px 16px rgba(15,23,42,0.25)', zIndex: 40, minWidth: 320, padding: 10 }}>
+                <div style={{ display: 'grid', gap: 10 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                    <div>
+                      <div style={{ fontWeight: 600, fontSize: 13 }}>TCE Custom Racial Bonuses</div>
+                      <div style={{ fontSize: 12, color: '#64748b' }}>Replace racial ASIs with flexible allocation</div>
+                    </div>
+                    <Button size="sm" variant={rules.tceCustomAsi ? 'default' : 'outline'} onClick={() => setRules((r) => ({ ...r, tceCustomAsi: !r.tceCustomAsi }))}>{rules.tceCustomAsi ? 'On' : 'Off'}</Button>
+                  </div>
+                  {rules.tceCustomAsi ? (
+                    <div style={{ padding: 8, border: '1px solid var(--muted-border)', borderRadius: 8, display: 'grid', gap: 8 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                        <div style={{ fontSize: 12, color: '#64748b' }}>Mode</div>
+                        <Button size="sm" variant={tceMode === '2+1' ? 'default' : 'outline'} onClick={() => { setTceMode('2+1'); setTceAlloc((prev)=>{ const next={...emptyAlloc, ...prev}; const total=Object.values(next).reduce((a,b)=>a+b,0); return total? next: { ...emptyAlloc, str: 2, dex: 1 } }) }}>+2 and +1</Button>
+                        <Button size="sm" variant={tceMode === '1+1+1' ? 'default' : 'outline'} onClick={() => { setTceMode('1+1+1'); setTceAlloc((prev)=>{ const next={...emptyAlloc, ...prev}; const total=Object.values(next).reduce((a,b)=>a+b,0); return total? next: { ...emptyAlloc, str: 1, dex: 1, con: 1 } }) }}>+1/+1/+1</Button>
+                        <Button size="sm" variant="ghost" onClick={() => setTceAlloc(tceMode === '2+1' ? { ...emptyAlloc, str: 2, dex: 1 } : { ...emptyAlloc, str: 1, dex: 1, con: 1 })}>Reset</Button>
+                      </div>
+                      {(() => {
+                        const budget = 3
+                        const limits: Record<AbilityKey, number> = { str: tceMode==='2+1'?2:1, dex: tceMode==='2+1'?2:1, con: tceMode==='2+1'?2:1, int: tceMode==='2+1'?2:1, wis: tceMode==='2+1'?2:1, cha: tceMode==='2+1'?2:1 }
+                        const total = (['str','dex','con','int','wis','cha'] as AbilityKey[]).reduce((s,k)=> s + (tceAlloc[k]||0), 0)
+                        const maxSlots = tceMode === '2+1' ? 2 : 3
+                        const usedSlots = (['str','dex','con','int','wis','cha'] as AbilityKey[]).filter(k => (tceAlloc[k]||0) > 0).length
+                        const canInc = (k: AbilityKey) => {
+                          const curr = tceAlloc[k] || 0
+                          if (curr >= limits[k]) return false
+                          if (total >= budget) return false
+                          if (tceMode === '2+1') {
+                            // prevent third slot on new ability
+                            if (usedSlots >= maxSlots && (tceAlloc[k]||0) === 0) return false
+                            // allow one ability to reach 2; ensure at most one value 2
+                            const alreadyTwo = (['str','dex','con','int','wis','cha'] as AbilityKey[]).some(x => (tceAlloc[x]||0) >= 2)
+                            if (alreadyTwo && curr >= 1) return false
+                          }
+                          return true
+                        }
+                        const canDec = (k: AbilityKey) => (tceAlloc[k]||0) > 0
+                        return (
+                          <>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 6 }}>
+                              {(['str','dex','con','int','wis','cha'] as AbilityKey[]).map((k) => (
+                                <div key={k} style={{ display: 'grid', gap: 4, alignContent: 'start' }}>
+                                  <div style={{ fontSize: 10, textTransform: 'uppercase', color: '#64748b', textAlign: 'center' }}>{k}</div>
+                                  <div style={{ display: 'flex', justifyContent: 'center', gap: 6 }}>
+                                    <Button size="icon" variant="outline" onClick={() => setTceAlloc((p)=>({ ...p, [k]: Math.max(0, (p[k]||0)-1) }))} disabled={!canDec(k)}>−</Button>
+                                    <div style={{ minWidth: 16, textAlign: 'center', fontWeight: 600 }}>{tceAlloc[k] || 0}</div>
+                                    <Button size="icon" variant="outline" onClick={() => { if (!canInc(k)) return; setTceAlloc((p)=>({ ...p, [k]: Math.min(limits[k], (p[k]||0)+1) })) }}>+</Button>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                            <div style={{ fontSize: 12, color: '#64748b' }}>Allocated {total} / {budget}</div>
+                          </>
+                        )
+                      })()}
+                    </div>
+                  ) : null}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                    <div>
+                      <div style={{ fontWeight: 600, fontSize: 13 }}>Enforce Multiclassing Requirements</div>
+                      <div style={{ fontSize: 12, color: '#64748b' }}>Require ability score minimums for additional classes</div>
+                    </div>
+                    <Button size="sm" variant={rules.multiclassReqs ? 'default' : 'outline'} onClick={() => setRules((r) => ({ ...r, multiclassReqs: !r.multiclassReqs }))}>{rules.multiclassReqs ? 'On' : 'Off'}</Button>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+          </div>
         </div>
       </div>
 
-      {/* Main grid: left builder, right summary */}
-  <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 420px', gap: 16, alignItems: 'start' }}>
+  {/* Main layout: left builder, right summary */}
+  <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, width: '100%' }}>
         {/* Left */}
-        <div style={{ display: 'grid', gap: 12 }}>
+    <div style={{ display: 'grid', gap: 12, minWidth: 0, flex: '1 1 auto' }}>
           {/* Basics */}
           <Card>
             <CardHeader><CardTitle><Info size={16} style={{ marginRight: 6 }} />Basics</CardTitle></CardHeader>
@@ -1910,7 +1933,7 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
                   />
                 </div>
 
-                <AbilityEditor abilities={abilities} onChange={setAbilities} race={race} asi={asiAlloc} />
+                <AbilityEditor abilities={abilities} onChange={setAbilities} race={race} asi={asiAlloc} tceActive={rules.tceCustomAsi} tceMode={tceMode} tceAlloc={tceAlloc} />
               </div>
             </CardContent>
           </Card>
@@ -2220,7 +2243,7 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
             const totalPoints = asiSlots * 2
             const spentPoints = (['str','dex','con','int','wis','cha'] as AbilityKey[]).reduce((s, k) => s + (asiAlloc[k] || 0), 0) + (selectedFeats.length * 2)
             const remaining = Math.max(0, totalPoints - spentPoints)
-            const fa = finalAbility(abilities, race, asiAlloc)
+            const fa = finalAbility(abilities, race, asiAlloc, { tceActive: rules.tceCustomAsi, tceMode, tceAlloc })
             const canIncrease = (k: AbilityKey) => remaining > 0 && fa[k] + 1 <= 20
             const canDecrease = (k: AbilityKey) => (asiAlloc[k] || 0) > 0
             const toggleFeat = (id: string) => {
@@ -2309,7 +2332,7 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
             if (!casterEntries.length) return null
             // Helper to get casting ability per class
             const castingMod = (klassId: string) => {
-              const fa = finalAbility(abilities, race, asiAlloc)
+              const fa = finalAbility(abilities, race, asiAlloc, { tceActive: rules.tceCustomAsi, tceMode, tceAlloc })
               const ab = klassId === 'bard' ? fa.cha
                 : klassId === 'cleric' ? fa.wis
                 : klassId === 'druid' ? fa.wis
@@ -2321,22 +2344,30 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
               return { mod: mod(ab), score: ab }
             }
             const pb = proficiencyBonus(derived.totalLevel)
-            // Demo limits:
-            // Bard Ctr:2, L1:2; Cleric Ctr:3, Prepared1 = max(1, WIS mod + cleric level); Wizard Ctr:3, L1:3
-            // Druid Ctr:2, Prepared1 = max(1, WIS mod + druid level)
-            // Warlock Ctr:2, L1:2 (simplified)
-            // Paladin: no cantrips, L1 prepared (simplified demo): Prepared1 = max(1, CHA mod + paladin level)
-            // Sorcerer: Ctr:4, L1:2 (simplified early levels)
-            // Ranger: no cantrips (PHB), prepare L1 = max(1, WIS mod + ranger level)
+            // Demo limits and unlock thresholds (simplified):
+            // Known casters get known L1/L2/L3 counts at or after unlock levels.
+            // Prepared casters have prepared limits per level = max(1, casting mod + class level) at or after unlock.
+            // Unlock levels (very simplified): full casters unlock L2@3, L3@5; half-casters unlock later.
+            const unlock = {
+              bard: { l2: 3, l3: 5 },
+              cleric: { l2: 3, l3: 5 },
+              druid: { l2: 3, l3: 5 },
+              wizard: { l2: 3, l3: 5 },
+              sorcerer: { l2: 3, l3: 5 },
+              warlock: { l2: 3, l3: 5 }, // pact magic differs, simplified
+              paladin: { l2: 5, l3: 9 }, // simplified half-caster
+              ranger: { l2: 5, l3: 9 },
+            } as const
+
             const limits = {
-              bard: { cantrips: 2, level1: 2, prepared1: 0 },
-              cleric: { cantrips: 3, level1: 0, prepared1: Math.max(1, castingMod('cleric').mod + (classes.find(c=>c.klass.id==='cleric')?.level || 1)) },
-              wizard: { cantrips: 3, level1: 3, prepared1: 0 },
-              druid: { cantrips: 2, level1: 0, prepared1: Math.max(1, castingMod('druid').mod + (classes.find(c=>c.klass.id==='druid')?.level || 1)) },
-              warlock: { cantrips: 2, level1: 2, prepared1: 0 },
-              paladin: { cantrips: 0, level1: 0, prepared1: Math.max(1, castingMod('paladin').mod + (classes.find(c=>c.klass.id==='paladin')?.level || 1)) },
-              sorcerer: { cantrips: 4, level1: 2, prepared1: 0 },
-              ranger: { cantrips: 0, level1: 0, prepared1: Math.max(1, castingMod('ranger').mod + (classes.find(c=>c.klass.id==='ranger')?.level || 1)) },
+              bard: { cantrips: 2, level1: 2, level2: 2, level3: 2, prepared1: 0, prepared2: 0, prepared3: 0 },
+              cleric: { cantrips: 3, level1: 0, level2: 0, level3: 0, prepared1: Math.max(1, castingMod('cleric').mod + (classes.find(c=>c.klass.id==='cleric')?.level || 1)), prepared2: 0, prepared3: 0 },
+              wizard: { cantrips: 3, level1: 3, level2: 2, level3: 2, prepared1: 0, prepared2: 0, prepared3: 0 },
+              druid: { cantrips: 2, level1: 0, level2: 0, level3: 0, prepared1: Math.max(1, castingMod('druid').mod + (classes.find(c=>c.klass.id==='druid')?.level || 1)), prepared2: 0, prepared3: 0 },
+              warlock: { cantrips: 2, level1: 2, level2: 2, level3: 0, prepared1: 0, prepared2: 0, prepared3: 0 },
+              paladin: { cantrips: 0, level1: 0, level2: 0, level3: 0, prepared1: Math.max(1, castingMod('paladin').mod + (classes.find(c=>c.klass.id==='paladin')?.level || 1)), prepared2: 0, prepared3: 0 },
+              sorcerer: { cantrips: 4, level1: 2, level2: 2, level3: 2, prepared1: 0, prepared2: 0, prepared3: 0 },
+              ranger: { cantrips: 0, level1: 0, level2: 0, level3: 0, prepared1: Math.max(1, castingMod('ranger').mod + (classes.find(c=>c.klass.id==='ranger')?.level || 1)), prepared2: 0, prepared3: 0 },
             } as const
 
             const toggle = (klassId: string, spellId: string, prepared = false) => {
@@ -2357,7 +2388,105 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
 
             return (
               <Card>
-                <CardHeader><CardTitle><Sparkles size={16} style={{ marginRight: 6 }} />Spells</CardTitle></CardHeader>
+                <CardHeader>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <CardTitle><Sparkles size={16} style={{ marginRight: 6 }} />Spells</CardTitle>
+                    <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
+                      {(() => {
+                        const dirty =
+                          !spellFilters.levels[0] ||
+                          !spellFilters.levels[1] ||
+                          !spellFilters.levels[2] ||
+                          !spellFilters.levels[3] ||
+                          spellFilters.selectedOnly ||
+                          (spellFilters.schools?.length || 0) > 0 ||
+                          (spellFilters.damage?.length || 0) > 0 ||
+                          (spellFilters.saves?.length || 0) > 0
+                        return (
+                          <Button
+                            size="sm"
+                            variant={spellsFiltersOpen || dirty ? 'default' : 'outline'}
+                            onClick={() => setSpellsFiltersOpen((v) => !v)}
+                            aria-haspopup="menu"
+                            aria-expanded={spellsFiltersOpen}
+                            title="Filters"
+                          >Filters</Button>
+                        )
+                      })()}
+                      {/* Filters dropdown moved to inline section below header */}
+                      <input
+                        value={spellsQuery}
+                        onChange={(e)=>setSpellsQuery(e.target.value)}
+                        placeholder="Search spells..."
+                        style={{ ...inp, width: 240, padding: '6px 10px' }}
+                        aria-label="Search spells"
+                      />
+                    </div>
+                  </div>
+                </CardHeader>
+                {spellsFiltersOpen ? (
+                  <div style={{ borderTop: '1px solid var(--muted-border)', background: 'var(--card-bg)', padding: 10, display: 'grid', gap: 8 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                      <div style={{ fontSize: 12, color: '#64748b' }}>Levels</div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                        <Button size="sm" variant={spellFilters.levels[0] ? 'default' : 'outline'} onClick={() => setSpellFilters((p) => ({ ...p, levels: { ...p.levels, 0: !p.levels[0] } }))}>Cantrips</Button>
+                        <Button size="sm" variant={spellFilters.levels[1] ? 'default' : 'outline'} onClick={() => setSpellFilters((p) => ({ ...p, levels: { ...p.levels, 1: !p.levels[1] } }))}>Level 1</Button>
+                        <Button size="sm" variant={spellFilters.levels[2] ? 'default' : 'outline'} onClick={() => setSpellFilters((p) => ({ ...p, levels: { ...p.levels, 2: !p.levels[2] } }))}>Level 2</Button>
+                        <Button size="sm" variant={spellFilters.levels[3] ? 'default' : 'outline'} onClick={() => setSpellFilters((p) => ({ ...p, levels: { ...p.levels, 3: !p.levels[3] } }))}>Level 3</Button>
+                        <Button size="sm" variant={spellFilters.selectedOnly ? 'default' : 'outline'} onClick={() => setSpellFilters((p) => ({ ...p, selectedOnly: !p.selectedOnly }))}>Selected Only</Button>
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                      <div style={{ fontSize: 12, color: '#64748b' }}>Schools</div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                        {(['abjuration','conjuration','divination','enchantment','evocation','illusion','necromancy','transmutation'] as MagicSchool[]).map((sc) => {
+                          const sel = spellFilters.schools.includes(sc)
+                          return (
+                            <Button key={sc} size="sm" variant={sel ? 'default' : 'outline'} onClick={() => setSpellFilters((p) => ({ ...p, schools: sel ? p.schools.filter(s=>s!==sc) : [...p.schools, sc] }))}>{sc}</Button>
+                          )
+                        })}
+                        {spellFilters.schools.length ? (
+                          <Button size="sm" variant="ghost" onClick={() => setSpellFilters((p)=>({ ...p, schools: [] }))}>Clear</Button>
+                        ) : null}
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                      <div style={{ fontSize: 12, color: '#64748b' }}>Damage</div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                        {(['acid','bludgeoning','cold','fire','force','lightning','necrotic','piercing','poison','psychic','radiant','slashing','thunder'] as DamageType[]).map((dt) => {
+                          const sel = spellFilters.damage.includes(dt)
+                          return (
+                            <Button key={dt} size="sm" variant={sel ? 'default' : 'outline'} onClick={() => setSpellFilters((p) => ({ ...p, damage: sel ? p.damage.filter(d=>d!==dt) : [...p.damage, dt] }))}>{dt}</Button>
+                          )
+                        })}
+                        {spellFilters.damage.length ? (
+                          <Button size="sm" variant="ghost" onClick={() => setSpellFilters((p)=>({ ...p, damage: [] }))}>Clear</Button>
+                        ) : null}
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                      <div style={{ fontSize: 12, color: '#64748b' }}>Saves</div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                        {(['str','dex','con','int','wis','cha'] as AbilityKey[]).map((ab) => {
+                          const sel = (spellFilters.saves as (AbilityKey|'none')[]).includes(ab)
+                          return (
+                            <Button key={ab} size="sm" variant={sel ? 'default' : 'outline'} onClick={() => setSpellFilters((p) => ({ ...p, saves: sel ? (p.saves as (AbilityKey|'none')[]).filter(s=>s!==ab) : ([...p.saves, ab] as (AbilityKey|'none')[]) }))}>{ab.toUpperCase()}</Button>
+                          )
+                        })}
+                        {/* Include 'none' for attack roll or non-save spells */}
+                        {(() => {
+                          const sel = (spellFilters.saves as (AbilityKey|'none')[]).includes('none')
+                          return (
+                            <Button size="sm" variant={sel ? 'default' : 'outline'} onClick={() => setSpellFilters((p) => ({ ...p, saves: sel ? (p.saves as (AbilityKey|'none')[]).filter(s=>s!=='none') : ([...p.saves, 'none'] as (AbilityKey|'none')[]) }))}>None</Button>
+                          )
+                        })()}
+                        {(spellFilters.saves?.length || 0) ? (
+                          <Button size="sm" variant="ghost" onClick={() => setSpellFilters((p)=>({ ...p, saves: [] }))}>Clear</Button>
+                        ) : null}
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
                 <CardContent>
                   <div style={{ display: 'grid', gap: 12 }}>
                     {casterEntries.map((c) => {
@@ -2365,14 +2494,50 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
                       const { mod: cam, score: cascore } = castingMod(kid)
                       const dc = 8 + pb + cam
                       const atk = pb + cam
-                      const cantrips = SPELLS.filter((s) => s.level === 0 && s.classes.includes(kid))
-                      const level1 = SPELLS.filter((s) => s.level === 1 && s.classes.includes(kid))
+                      const q = spellsQuery.trim().toLowerCase()
+                      const byQuery = (s: Spell) => !q || s.name.toLowerCase().includes(q) || s.text.toLowerCase().includes(q)
+                      const byFacets = (s: Spell) => {
+                        const meta = (SPELL_META as any)[s.id] || {}
+                        // Schools
+                        if ((spellFilters.schools?.length || 0) > 0) {
+                          if (!meta.school || !(spellFilters.schools as any).includes(meta.school)) return false
+                        }
+                        // Damage types
+                        if ((spellFilters.damage?.length || 0) > 0) {
+                          const dmg: string[] = meta.damageTypes || []
+                          if (!dmg.some((d) => (spellFilters.damage as any).includes(d))) return false
+                        }
+                        // Saves
+                        if ((spellFilters.saves?.length || 0) > 0) {
+                          const wantsNone = (spellFilters.saves as any).includes('none')
+                          const save = meta.save || 'none'
+                          if (wantsNone) {
+                            if (save !== 'none') {
+                              const others = (spellFilters.saves as any).filter((x: any) => x !== 'none')
+                              if (others.length === 0) return false
+                              if (!others.includes(save)) return false
+                            }
+                          } else {
+                            if (!(spellFilters.saves as any).includes(save)) return false
+                          }
+                        }
+                        return true
+                      }
+                      const cantrips = SPELLS.filter((s) => s.level === 0 && s.classes.includes(kid) && byQuery(s) && byFacets(s))
+                      const level1 = SPELLS.filter((s) => s.level === 1 && s.classes.includes(kid) && byQuery(s) && byFacets(s))
+                      const level2 = SPELLS.filter((s) => s.level === 2 && s.classes.includes(kid) && byQuery(s) && byFacets(s))
+                      const level3 = SPELLS.filter((s) => s.level === 3 && s.classes.includes(kid) && byQuery(s) && byFacets(s))
                       const known = knownSpells[kid] || []
                       const prepared = preparedSpells[kid] || []
-                      const lim = (limits as any)[kid] || { cantrips: 0, level1: 0, prepared1: 0 }
+                      const lim = (limits as any)[kid] || { cantrips: 0, level1: 0, level2: 0, level3: 0, prepared1: 0, prepared2: 0, prepared3: 0 }
                       const knownCanCount = known.filter((id) => cantrips.some((s) => s.id === id)).length
                       const knownL1Count = known.filter((id) => level1.some((s) => s.id === id)).length
+                      const knownL2Count = known.filter((id) => level2.some((s) => s.id === id)).length
+                      const knownL3Count = known.filter((id) => level3.some((s) => s.id === id)).length
                       const prepL1Count = prepared.filter((id) => level1.some((s) => s.id === id)).length
+                      const prepL2Count = prepared.filter((id) => level2.some((s) => s.id === id)).length
+                      const prepL3Count = prepared.filter((id) => level3.some((s) => s.id === id)).length
+                      const kidLevel = classes.find((x)=>x.klass.id===kid)?.level || 1
                       return (
                         <div key={kid} style={{ padding: 8, borderRadius: 12, border: '1px solid var(--muted-border)', background: 'var(--card-bg)', display: 'grid', gap: 8 }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -2392,11 +2557,11 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
                           </div>
 
                           {/* Cantrips */}
-                          {!!lim.cantrips && (
+          {!!lim.cantrips && spellFilters.levels[0] && (
                             <div style={{ display: 'grid', gap: 6 }}>
                               <div style={{ fontSize: 12, color: '#64748b' }}>Cantrips: pick {lim.cantrips - knownCanCount} more</div>
                               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                                {cantrips.map((sp) => {
+            {cantrips.filter(sp => !spellFilters.selectedOnly || known.includes(sp.id)).map((sp) => {
                                   const sel = known.includes(sp.id)
                                   const full = knownCanCount >= lim.cantrips
                                   return (
@@ -2409,11 +2574,11 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
                           )}
 
                           {/* Level 1 known/prepared (known for bard/wizard/warlock) */}
-                          {['bard','wizard','warlock','sorcerer'].includes(kid) && !!lim.level1 && (
+          {['bard','wizard','warlock','sorcerer'].includes(kid) && !!lim.level1 && spellFilters.levels[1] && (
                             <div style={{ display: 'grid', gap: 6 }}>
                               <div style={{ fontSize: 12, color: '#64748b' }}>Level 1 Spells: pick {lim.level1 - knownL1Count} more</div>
                               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                                {level1.map((sp) => {
+            {level1.filter(sp => !spellFilters.selectedOnly || known.includes(sp.id)).map((sp) => {
                                   const sel = known.includes(sp.id)
                                   const full = knownL1Count >= lim.level1
                                   return (
@@ -2425,12 +2590,46 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
                             </div>
                           )}
 
+                          {/* Level 2 known for known-casters when unlocked */}
+          {['bard','wizard','warlock','sorcerer'].includes(kid) && !!lim.level2 && spellFilters.levels[2] && kidLevel >= (unlock as any)[kid].l2 && (
+                            <div style={{ display: 'grid', gap: 6 }}>
+                              <div style={{ fontSize: 12, color: '#64748b' }}>Level 2 Spells: pick {lim.level2 - knownL2Count} more</div>
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            {level2.filter(sp => !spellFilters.selectedOnly || known.includes(sp.id)).map((sp) => {
+                                  const sel = known.includes(sp.id)
+                                  const full = knownL2Count >= lim.level2
+                                  return (
+                                    <Button key={sp.id} size="sm" variant={sel ? 'default' : 'outline'} disabled={!sel && full} onClick={() => toggle(kid, sp.id)} title={sp.text} style={{ opacity: !sel && full ? 0.6 : 1 }}>{sp.name}</Button>
+                                  )
+                                })}
+                              </div>
+                              <div style={{ fontSize: 12, color: '#64748b' }}>Selected {knownL2Count} / {lim.level2}</div>
+                            </div>
+                          )}
+
+                          {/* Level 3 known for known-casters when unlocked */}
+          {['bard','wizard','sorcerer'].includes(kid) && !!lim.level3 && spellFilters.levels[3] && kidLevel >= (unlock as any)[kid].l3 && (
+                            <div style={{ display: 'grid', gap: 6 }}>
+                              <div style={{ fontSize: 12, color: '#64748b' }}>Level 3 Spells: pick {lim.level3 - knownL3Count} more</div>
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            {level3.filter(sp => !spellFilters.selectedOnly || known.includes(sp.id)).map((sp) => {
+                                  const sel = known.includes(sp.id)
+                                  const full = knownL3Count >= lim.level3
+                                  return (
+                                    <Button key={sp.id} size="sm" variant={sel ? 'default' : 'outline'} disabled={!sel && full} onClick={() => toggle(kid, sp.id)} title={sp.text} style={{ opacity: !sel && full ? 0.6 : 1 }}>{sp.name}</Button>
+                                  )
+                                })}
+                              </div>
+                              <div style={{ fontSize: 12, color: '#64748b' }}>Selected {knownL3Count} / {lim.level3}</div>
+                            </div>
+                          )}
+
                           {/* Prepared casters: cleric, druid, paladin */}
-                          {['cleric','druid','paladin','ranger'].includes(kid) && lim.prepared1 > 0 && (
+          {['cleric','druid','paladin','ranger'].includes(kid) && lim.prepared1 > 0 && spellFilters.levels[1] && (
                             <div style={{ display: 'grid', gap: 6 }}>
                               <div style={{ fontSize: 12, color: '#64748b' }}>Prepared Level 1: pick {Math.max(0, lim.prepared1 - prepL1Count)} more (limit {lim.prepared1})</div>
                               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                                {level1.map((sp) => {
+            {level1.filter(sp => !spellFilters.selectedOnly || prepared.includes(sp.id)).map((sp) => {
                                   const sel = prepared.includes(sp.id)
                                   const full = prepL1Count >= lim.prepared1
                                   return (
@@ -2439,6 +2638,43 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
                                 })}
                               </div>
                               <div style={{ fontSize: 12, color: '#64748b' }}>Prepared {prepL1Count} / {lim.prepared1}</div>
+                            </div>
+                          )}
+
+                          {/* Prepared Level 2 */}
+          {['cleric','druid','paladin','ranger'].includes(kid) && spellFilters.levels[2] && kidLevel >= (unlock as any)[kid].l2 && (
+                            <div style={{ display: 'grid', gap: 6 }}>
+                              <div style={{ fontSize: 12, color: '#64748b' }}>Prepared Level 2</div>
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            {level2.filter(sp => !spellFilters.selectedOnly || prepared.includes(sp.id)).map((sp) => {
+                                  const sel = prepared.includes(sp.id)
+                                  // Simplified limit: same formula as level 1 for demo
+                                  const limit = lim.prepared2 || lim.prepared1
+                                  const full = prepL2Count >= limit
+                                  return (
+                                    <Button key={sp.id} size="sm" variant={sel ? 'default' : 'outline'} disabled={!sel && full} onClick={() => toggle(kid, sp.id, true)} title={sp.text} style={{ opacity: !sel && full ? 0.6 : 1 }}>{sp.name}</Button>
+                                  )
+                                })}
+                              </div>
+                              <div style={{ fontSize: 12, color: '#64748b' }}>Prepared {prepL2Count} / {lim.prepared2 || lim.prepared1}</div>
+                            </div>
+                          )}
+
+                          {/* Prepared Level 3 */}
+          {['cleric','druid','paladin','ranger'].includes(kid) && spellFilters.levels[3] && kidLevel >= (unlock as any)[kid].l3 && (
+                            <div style={{ display: 'grid', gap: 6 }}>
+                              <div style={{ fontSize: 12, color: '#64748b' }}>Prepared Level 3</div>
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            {level3.filter(sp => !spellFilters.selectedOnly || prepared.includes(sp.id)).map((sp) => {
+                                  const sel = prepared.includes(sp.id)
+                                  const limit = lim.prepared3 || lim.prepared1
+                                  const full = prepL3Count >= limit
+                                  return (
+                                    <Button key={sp.id} size="sm" variant={sel ? 'default' : 'outline'} disabled={!sel && full} onClick={() => toggle(kid, sp.id, true)} title={sp.text} style={{ opacity: !sel && full ? 0.6 : 1 }}>{sp.name}</Button>
+                                  )
+                                })}
+                              </div>
+                              <div style={{ fontSize: 12, color: '#64748b' }}>Prepared {prepL3Count} / {lim.prepared3 || lim.prepared1}</div>
                             </div>
                           )}
                         </div>
@@ -2487,7 +2723,7 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
                   </div>
 
                   {(() => {
-                    const fa = finalAbility(abilities, race, asiAlloc)
+                    const fa = finalAbility(abilities, race, asiAlloc, { tceActive: rules.tceCustomAsi, tceMode, tceAlloc })
                     const pb = proficiencyBonus(derived.totalLevel)
                     // Ability sort order preference (CHA, CON, DEX, INT, STR, WIS)
                     const abilityOrder: AbilityKey[] = ['cha', 'con', 'dex', 'int', 'str', 'wis']
@@ -2691,8 +2927,8 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
           {/* Compare panel and Toy Combat Readiness removed */}
         </div>
 
-        {/* Right: Live Summary */}
-  <aside style={{ display: 'grid', gap: 12, position: 'sticky', top: 76 }}>
+    {/* Right: Live Summary */}
+  <aside style={{ display: 'grid', gap: 12, position: 'sticky', top: 76, flex: '0 0 420px', width: 420, minWidth: 420, boxSizing: 'border-box' }}>
           <Card>
             <CardHeader><CardTitle><Scale size={16} style={{ marginRight: 6 }} />Live Summary</CardTitle></CardHeader>
             <CardContent>
@@ -2722,8 +2958,8 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
           {(['str','dex','con','int','wis','cha'] as AbilityKey[]).map((k) => (
                     <div key={k} style={{ padding: 8, borderRadius: 12, border: '1px solid var(--muted-border)', background: 'var(--card-bg)', display: 'grid', gap: 6 }}>
                       <div style={{ fontSize: 10, textTransform: 'uppercase', color: '#64748b' }}>{k}</div>
-            <div style={{ fontWeight: 600 }}>{finalAbility(abilities, race, asiAlloc)[k]}</div>
-            <div style={{ fontSize: 12, color: '#64748b' }}>mod {mod(finalAbility(abilities, race, asiAlloc)[k]) >= 0 ? '+' : ''}{mod(finalAbility(abilities, race, asiAlloc)[k])}</div>
+                      <div style={{ fontWeight: 600 }}>{finalAbility(abilities, race, asiAlloc, { tceActive: rules.tceCustomAsi, tceMode, tceAlloc })[k]}</div>
+            <div style={{ fontSize: 12, color: '#64748b' }}>mod {mod(finalAbility(abilities, race, asiAlloc, { tceActive: rules.tceCustomAsi, tceMode, tceAlloc })[k]) >= 0 ? '+' : ''}{mod(finalAbility(abilities, race, asiAlloc, { tceActive: rules.tceCustomAsi, tceMode, tceAlloc })[k])}</div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                         <span style={{ fontSize: 11, color: '#64748b' }}>Save</span>
                         <Pill>{derived.saves[k] >= 0 ? `+${derived.saves[k]}` : derived.saves[k]}</Pill>
@@ -2929,8 +3165,8 @@ function Selector<T extends { id: string }>(props: { options: T[]; value: T; onC
   )
 }
 
-function AbilityEditor(props: { abilities: Record<AbilityKey, number>; onChange: (v: Record<AbilityKey, number>) => void; race: Race; asi?: Record<AbilityKey, number> }) {
-  const final = finalAbility(props.abilities, props.race, props.asi)
+function AbilityEditor(props: { abilities: Record<AbilityKey, number>; onChange: (v: Record<AbilityKey, number>) => void; race: Race; asi?: Record<AbilityKey, number>; tceActive?: boolean; tceMode?: '2+1' | '1+1+1'; tceAlloc?: Record<AbilityKey, number> }) {
+  const final = finalAbility(props.abilities, props.race, props.asi, { tceActive: props.tceActive, tceMode: props.tceMode, tceAlloc: props.tceAlloc })
   const order: AbilityKey[] = ['str', 'dex', 'con', 'int', 'wis', 'cha']
 
   // Roll pool + DnD state
@@ -3122,9 +3358,18 @@ function AbilityEditor(props: { abilities: Record<AbilityKey, number>; onChange:
   )
 }
 
-function finalAbility(abilities: Record<AbilityKey, number>, race: Race, asi?: Record<AbilityKey, number>): Record<AbilityKey, number> {
+function finalAbility(abilities: Record<AbilityKey, number>, race: Race, asi?: Record<AbilityKey, number>, opts?: RuleOpts): Record<AbilityKey, number> {
   const out: Record<AbilityKey, number> = { ...{ str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 }, ...abilities }
-  Object.entries(race?.asis || {}).forEach(([k, inc]) => { const kk = k as AbilityKey; out[kk] = (out[kk] || 10) + (inc || 0) })
+  if (opts?.tceActive) {
+    // Apply flexible TCE allocation instead of race ASIs. Assume alloc already respects mode/budget.
+    const alloc = opts.tceAlloc || { str: 0, dex: 0, con: 0, int: 0, wis: 0, cha: 0 }
+    ;(['str','dex','con','int','wis','cha'] as AbilityKey[]).forEach((k) => {
+      const inc = Math.max(0, Math.floor(alloc[k] || 0))
+      out[k] = (out[k] || 10) + inc
+    })
+  } else {
+    Object.entries(race?.asis || {}).forEach(([k, inc]) => { const kk = k as AbilityKey; out[kk] = (out[kk] || 10) + (inc || 0) })
+  }
   if (asi) {
     (['str','dex','con','int','wis','cha'] as AbilityKey[]).forEach((k) => {
       const inc = Math.max(0, Math.floor(asi[k] || 0))
