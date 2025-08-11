@@ -1,10 +1,12 @@
-import React, { useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import Builder, { AppState as BuilderState } from './Builder.tsx'
 import { NodeOptimizer } from './NodeOptimizer.tsx'
 import ProgressionPlanner from './ProgressionPlanner.tsx'
+import CombatTracker from './CombatTracker.tsx'
+import EncounterSimulator from './EncounterSimulator.tsx'
 
 export function App() {
-  const [tab, setTab] = useState<'builder' | 'planner' | 'optimizer'>('builder')
+  const [tab, setTab] = useState<'builder' | 'planner' | 'optimizer' | 'combat' | 'sim'>('builder')
   const [character, setCharacter] = useState<BuilderState | undefined>(undefined)
   const [derived, setDerived] = useState<any>(undefined)
   // Plan imported from Progression Planner to apply in Builder
@@ -15,6 +17,21 @@ export function App() {
     // Switch to Builder tab so user sees the applied changes
     setTab('builder')
   }
+
+  // When navigating back to the Builder tab without explicitly applying, load the last active plan
+  const activePlanKey = useMemo(() => `progressionPlanner.activePlan.v1:${character?.name || 'default'}`, [character?.name])
+  useEffect(() => {
+    if (tab !== 'builder') return
+    try {
+      const raw = localStorage.getItem(activePlanKey)
+      if (!raw) return
+      const parsed = JSON.parse(raw)
+      if (parsed && parsed.plan) {
+        // Attach a timestamp so Builder can detect and prompt
+        setImportPlan({ ...(parsed.plan || {}), _ts: Date.now(), _origin: 'planner-passive' })
+      }
+    } catch {}
+  }, [tab, activePlanKey])
   return (
     <div>
       <header style={{ position: 'sticky', top: 0, zIndex: 30, backdropFilter: 'saturate(1.2) blur(6px)', background: 'rgba(248,250,252,0.8)', borderBottom: '1px solid #e2e8f0' }}>
@@ -24,6 +41,8 @@ export function App() {
           <button onClick={() => setTab('builder')} style={btn(tab === 'builder')}>Character Builder</button>
           <button onClick={() => setTab('planner')} style={btn(tab === 'planner')}>Progression Planner</button>
           <button onClick={() => setTab('optimizer')} style={btn(tab === 'optimizer')}>DPR Graph Optimizer</button>
+          <button onClick={() => setTab('combat')} style={btn(tab === 'combat')}>Combat Tracker</button>
+          <button onClick={() => setTab('sim')} style={btn(tab === 'sim')}>Encounter Simulator</button>
           </nav>
         </div>
       </header>
@@ -35,8 +54,12 @@ export function App() {
           </div>
         ) : tab === 'planner' ? (
           <ProgressionPlanner character={character} derived={derived} onApplyPlan={onApplyPlan} />
-        ) : (
+        ) : tab === 'optimizer' ? (
           <NodeOptimizer character={character} derived={derived} />
+        ) : tab === 'combat' ? (
+          <CombatTracker />
+        ) : (
+          <EncounterSimulator />
         )}
       </main>
     </div>

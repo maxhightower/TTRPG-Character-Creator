@@ -165,9 +165,9 @@ export function Optimizer() {
             </select>
           </Field>
           <div style={{ fontSize: 13, color: '#334155', marginTop: 6 }}>
-            <div><strong>Dice:</strong> {weapon.dice}{weapon.versatile ? ` (${weapon.versatile} versatile)` : ''}</div>
+            <div><strong>Dice:</strong> {weapon.dice}{(weapon as any).versatile ? ` (${(weapon as any).versatile} versatile)` : ''}</div>
             <div><strong>Type:</strong> {weapon.type}</div>
-            <div><strong>Props:</strong> {weapon.properties.join(', ') || '-'}</div>
+            <div><strong>Props:</strong> {Array.from(weapon.properties as readonly string[]).join(', ') || '-'}</div>
           </div>
         </Panel>
 
@@ -252,8 +252,8 @@ function computeSummary(s: State, weapon: Weapon, attacksBase: number, prof: num
   if (s.styleId === 'defense') { notes.push('Defense: +1 AC (not factored into DPR).') }
   if (s.buffs.bless) { toHit += 2.5; notes.push('Bless: +≈2.5 to hit EV.') }
 
-  const qualifiesGWM = weapon.tags?.includes('gwm')
-  const qualifiesSS = weapon.tags?.includes('ss')
+  const qualifiesGWM = (weapon.tags as string[] | undefined)?.includes('gwm')
+  const qualifiesSS = (weapon.tags as string[] | undefined)?.includes('ss')
   if (s.feats.gwm && qualifiesGWM && !isRanged) { toHit -= 5; notes.push('GWM: -5 to hit/+10 dmg.') }
   if (s.feats.ss && qualifiesSS && isRanged) { toHit -= 5; notes.push('Sharpshooter: -5 to hit/+10 dmg.') }
 
@@ -274,12 +274,12 @@ function computeSummary(s: State, weapon: Weapon, attacksBase: number, prof: num
   let extraAttacks = 0
 
   if (s.styleId === 'dueling' && weapon.handed === '1h' && !isRanged) { flatDamageBonus += 2; notes.push('Dueling: +2 damage with 1H melee.') }
-  if (s.styleId === 'two-weapon' && weapon.properties.includes('light') && !isRanged) { extraAttacks += 1; notes.push('Two-Weapon Fighting: includes offhand attack (adds mod).') }
+  if (s.styleId === 'two-weapon' && Array.from(weapon.properties as readonly string[]).includes('light') && !isRanged) { extraAttacks += 1; notes.push('Two-Weapon Fighting: includes offhand attack (adds mod).') }
 
   if (s.feats.gwm && qualifiesGWM && !isRanged) { flatDamageBonus += 10 }
   if (s.feats.ss && qualifiesSS && isRanged) { flatDamageBonus += 10 }
   let pamBonusAvg = 0
-  if (s.feats.pam && weapon.tags?.includes('pam') && !isRanged) {
+  if (s.feats.pam && (weapon.tags as string[] | undefined)?.includes('pam') && !isRanged) {
     const rageBonus = s.features.rage ? (level >= 16 ? 4 : level >= 9 ? 3 : 2) : 0
     const riderOnHitAvgPam = s.buffs.d6onhit ? DICE_AVG.d6 : 0
     const buttAvg = DICE_AVG.d4 + dmgMod + rageBonus + riderOnHitAvgPam

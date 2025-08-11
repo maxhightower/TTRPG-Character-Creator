@@ -18,11 +18,43 @@ const CLASSES = [
   'Barbarian', 'Bard', 'Cleric', 'Druid', 'Fighter', 'Monk', 'Paladin', 'Ranger', 'Rogue', 'Sorcerer', 'Warlock', 'Wizard'
 ] as const
 
-// Races and Backgrounds for root node
-const RACE_NAMES = ['Human (Base)', 'Human (Variant)', 'Elf (Wood)', 'Elf (High)'] as const
-const BACKGROUNDS = ['Soldier', 'Acolyte', 'Sage', 'Outlander'] as const
+// Subclass unlock levels by class (5e-like defaults)
+const SUBCLASS_LEVELS: Record<(typeof CLASSES)[number], number> = {
+  Barbarian: 3,
+  Bard: 3,
+  Cleric: 1,
+  Druid: 2,
+  Fighter: 3,
+  Monk: 3,
+  Paladin: 3,
+  Ranger: 3,
+  Rogue: 3,
+  Sorcerer: 1,
+  Warlock: 1,
+  Wizard: 2,
+}
 
-type StepType = 'level' | 'class' | 'feat' | 'asi' | 'note'
+// Races and Backgrounds for root node (mirrors Builder catalog for Scratch tokens)
+const RACE_NAMES = [
+  'Human (Base)', 'Human (Variant)',
+  // Elves
+  'Elf (Wood)', 'Elf (High)',
+  // Dwarves
+  'Dwarf (Hill)', 'Dwarf (Mountain)',
+  // Halflings
+  'Halfling (Lightfoot)', 'Halfling (Stout)',
+  // Tiefling, Dragonborn + variants
+  'Tiefling', 'Dragonborn',
+  'Dragonborn (Black)', 'Dragonborn (Blue)', 'Dragonborn (Brass)', 'Dragonborn (Bronze)', 'Dragonborn (Copper)', 'Dragonborn (Gold)', 'Dragonborn (Green)', 'Dragonborn (Red)', 'Dragonborn (Silver)', 'Dragonborn (White)',
+  // Others
+  'Gnome', 'Half-Orc',
+ ] as const
+const BACKGROUNDS = [
+  'Soldier', 'Acolyte', 'Criminal', 'Sage', 'Folk Hero', 'Urchin',
+  'Noble', 'Outlander', 'Sailor',
+] as const
+
+type StepType = 'level' | 'class' | 'feat' | 'asi' | 'bundle' | 'subclass' | 'note'
 
 // Add token type for typed ASI holes
 type AbilityToken = 'STR' | 'DEX' | 'CON' | 'INT' | 'WIS' | 'CHA'
@@ -32,6 +64,8 @@ type ProgressStepData = {
   onDelete?: (id: string) => void
   onAddChild?: (kind?: StepType) => void
   onApply?: () => void
+  // Duplicate the entire branch for the root that contains this node
+  onCloneFromSelf?: () => void
   level: number
   type: StepType
   className?: typeof CLASSES[number]
@@ -41,10 +75,22 @@ type ProgressStepData = {
   // Optional typed ASI holes integrated into nodes
   ability1?: AbilityToken | null
   ability2?: AbilityToken | null
+  // For subclass decision nodes
+  subclass?: string
   notes?: string
   // UI/Customization
   collapsed?: boolean
+  // Feature choices bundle
+  featureChoices?: FeatureChoice[]
+  // UI state (derived, not persisted)
+  _active?: boolean
 }
+
+// Feature Choices for bundle nodes
+type FeatureChoice =
+  | { id: string; kind: 'fighting-style'; style?: string }
+  | { id: string; kind: 'skill-proficiency'; skills: string[]; count: number }
+  | { id: string; kind: 'other'; text?: string }
 
 type RootNodeData = {
   race?: string
@@ -52,10 +98,12 @@ type RootNodeData = {
   other?: string
   onChange?: (p: Partial<RootNodeData>) => void
   onDelete?: (id: string) => void
-  onClone?: (id: string) => void
+  onClone?: () => void
   onApply?: () => void
   onAddChild?: (kind?: StepType) => void
   collapsed?: boolean
+  // UI state (derived, not persisted)
+  _active?: boolean
 }
 
 function PanelBox(props: { title: string; children: React.ReactNode }) {
@@ -69,6 +117,13 @@ function PanelBox(props: { title: string; children: React.ReactNode }) {
 
 // Scratch-like blocks
 const ABILITIES = ['STR', 'DEX', 'CON', 'INT', 'WIS', 'CHA'] as const
+const SKILLS = [
+  'Acrobatics', 'Animal Handling', 'Arcana', 'Athletics', 'Deception', 'History', 'Insight', 'Intimidation',
+  'Investigation', 'Medicine', 'Nature', 'Perception', 'Performance', 'Persuasion', 'Religion', 'Sleight of Hand', 'Stealth', 'Survival'
+] as const
+const FIGHTING_STYLES = [
+  'Archery', 'Defense', 'Dueling', 'Great Weapon Fighting', 'Protection', 'Two-Weapon Fighting',
+] as const
 
 type ScratchBlock =
   | { id: string; kind: 'class'; level: number; className?: typeof CLASSES[number] }
@@ -172,7 +227,10 @@ function ScratchBlockView(props: {
             style={holeStyle(over === 'class')}
           >{props.blk.className ? tokenBadge(props.blk.className) : <span style={{ color: '#64748b' }}>drop class here</span>}</span>
           <select value={props.blk.className || 'Fighter'} onChange={(e) => props.onChange({ className: e.target.value as any })} style={inp}>
-            {(CLASSES as readonly string[]).map((c: string) => (<option key={c} value={c}>{c}</option>))}
+            {(CLASSES as readonly string[])
+              .slice()
+              .sort((a, b) => a.localeCompare(b))
+              .map((c: string) => (<option key={c} value={c}>{c}</option>))}
           </select>
         </div>
       )}
@@ -211,7 +269,7 @@ function ScratchBlockView(props: {
 }
 
 function ProgressStepNode({ id, data }: { id: string; data: ProgressStepData }) {
-  const { deleteElements } = useReactFlow()
+  const { deleteElements, getNode, getEdges, setNodes: rfSetNodes, setEdges: rfSetEdges, getNodes } = useReactFlow()
   const handleDelete = useCallback((e: React.MouseEvent) => {
     e.stopPropagation(); e.preventDefault();
     deleteElements({ nodes: [{ id }] })
@@ -235,6 +293,18 @@ function ProgressStepNode({ id, data }: { id: string; data: ProgressStepData }) 
     if (data.type === 'asi') {
       if (data.ability1 || data.ability2 || data.asi) parts.push(data.asi || buildAsiString(data.ability1, data.ability2) || 'ASI')
     }
+    if (data.type === 'bundle') {
+      const fc = data.featureChoices || []
+      const kinds = new Set(fc.map((c) => c.kind))
+      const labels: string[] = []
+      if (kinds.has('fighting-style')) labels.push('Fighting Style')
+      if (kinds.has('skill-proficiency')) labels.push('Skills')
+      if (kinds.has('other')) labels.push('Other')
+      parts.push(labels.length ? `Choices: ${labels.join(', ')}` : 'Choices')
+    }
+    if (data.type === 'subclass') {
+      parts.push(`Subclass${data.subclass ? `: ${data.subclass}` : ''}`)
+    }
     if ((data.notes || '').trim()) parts.push((data.notes || '').trim().slice(0, 32))
     return parts.join(' • ')
   }, [data.level, data.type, data.className, data.featName, data.asi, data.notes])
@@ -248,8 +318,39 @@ function ProgressStepNode({ id, data }: { id: string; data: ProgressStepData }) 
     return base || fighterExtra || rogueExtra
   }, [data.level, data.className])
 
+  // Single bottom attachment handle: allow ASI or Bundle to connect into Class steps
+  const isValidAttachConnection = useCallback((conn: any) => {
+    if (conn?.targetHandle !== 'attach') return true
+    const src = conn?.source ? getNode(conn.source) as any : null
+    const tgt = conn?.target ? getNode(conn.target) as any : null
+  const okSource = !!(src && src.type === 'progressStep' && (src.data?.type === 'asi' || src.data?.type === 'bundle' || src.data?.type === 'subclass'))
+    const okTarget = !!(tgt && tgt.type === 'progressStep' && tgt.data?.type === 'class')
+    return okSource && okTarget
+  }, [getNode])
+
+  // Small indicator for how many items are attached via the single bottom handle
+  const attachedChoiceCount = useMemo(() => {
+    const directChoices = Array.isArray((data as any)?.featureChoices) ? (data as any).featureChoices.length : 0
+    if ((data as any)?.type !== 'class') return directChoices
+    try {
+      const incoming = (getEdges?.() || []).filter((e: any) => e.target === id && e?.targetHandle === 'attach')
+      let extra = 0
+      for (const e of incoming) {
+        const src = getNode?.(e.source) as any
+        if (!src || src.type !== 'progressStep') continue
+  if (src.data?.type === 'bundle' && Array.isArray(src.data?.featureChoices)) extra += src.data.featureChoices.length
+  else if (src.data?.type === 'asi') extra += 1
+  else if (src.data?.type === 'subclass') extra += 1
+      }
+      return directChoices + extra
+    } catch {
+      return directChoices
+    }
+  }, [data, getEdges, getNode, id])
+
+  const activeGlow = data?._active ? '0 0 0 2px rgba(14,165,233,0.35), 0 6px 20px rgba(14,165,233,0.25)' : '0 1px 2px rgba(0,0,0,0.06)'
   return (
-    <div style={{ position: 'relative' }}>
+    <div style={{ position: 'relative', boxShadow: activeGlow }}>
       {/* Kebab actions */}
       <details className="nodrag nopan" style={{ position: 'absolute', top: 4, right: 4, zIndex: 10 }}>
         <summary
@@ -269,9 +370,75 @@ function ProgressStepNode({ id, data }: { id: string; data: ProgressStepData }) 
           {data.onApply ? (
             <button className="nodrag nopan" style={btn} onClick={(e) => { e.preventDefault(); data.onApply?.(); const dtl = (e.currentTarget as HTMLElement).closest('details') as HTMLDetailsElement | null; if (dtl) dtl.removeAttribute('open') }}>Apply to Builder</button>
           ) : null}
+          {data.onCloneFromSelf ? (
+            <button className="nodrag nopan" style={btn} onClick={(e) => { e.preventDefault(); data.onCloneFromSelf?.(); const dtl = (e.currentTarget as HTMLElement).closest('details') as HTMLDetailsElement | null; if (dtl) dtl.removeAttribute('open') }}>Duplicate Branch</button>
+          ) : null}
         </div>
       </details>
       <Handle type="target" position={Position.Left} />
+  {/* Remove top target; single connection lives at the bottom */}
+      {/* For bundle and ASI steps, expose a top source handle so they can attach upward into the class bottom handle */}
+  {data?.type === 'bundle' || data?.type === 'asi' || data?.type === 'subclass' ? (
+        <Handle
+          type="source"
+          id="top"
+          position={Position.Top}
+          style={{ background: '#0ea5e9', width: 10, height: 10, border: '2px solid #fff' }}
+        />
+      ) : null}
+      {/* Single bottom attachment handle that accepts Bundle or ASI (only on class steps) */}
+      {data?.type === 'class' ? (
+        <Handle
+          type="target"
+          id="attach"
+          position={Position.Bottom}
+          isValidConnection={isValidAttachConnection}
+          style={{ background: '#0ea5e9', width: 10, height: 10, border: '2px solid #fff' }}
+        />
+      ) : null}
+  {/* Quick attach: single + button — on subclass unlock levels create a Subclass node; else ASI if qualifies; else a generic Bundle */}
+      {data?.type === 'class' ? (
+        <button
+          className="nodrag nopan"
+          onClick={(e) => {
+            e.preventDefault(); e.stopPropagation()
+            try {
+              const nid = `step-${crypto.randomUUID().slice(0, 6)}`
+              const y = (getNode?.(id) as any)?.position?.y ?? 0
+              const x = (getNode?.(id) as any)?.position?.x ?? 0
+              const subclassLevel = data.className ? SUBCLASS_LEVELS[data.className as keyof typeof SUBCLASS_LEVELS] : undefined
+              const makeSubclass = !!(data.className && subclassLevel && Number(data.level) === subclassLevel)
+              const makeAsi = !makeSubclass && !!qualifiesForImprovements
+              const newNode: any = {
+                id: nid,
+                type: 'progressStep',
+                position: { x: x, y: y + 100 },
+                data: makeAsi
+                  ? { level: data.level, type: 'asi', ability1: null, ability2: null, asi: '', collapsed: false }
+                  : makeSubclass
+                    ? { level: data.level, type: 'subclass', subclass: '', collapsed: false }
+                    : { level: data.level, type: 'bundle', featureChoices: [], collapsed: false }
+              }
+              const newEdge: any = { id: `e-${crypto.randomUUID().slice(0, 6)}`, source: nid, sourceHandle: 'top', target: id, targetHandle: 'attach' }
+              const list = (getNodes?.() as any[]) || []
+              rfSetNodes?.([...(list as any), newNode])
+              const existingEdges = (getEdges?.() as any[]) || []
+              rfSetEdges?.([...(existingEdges as any), newEdge])
+            } catch {}
+          }}
+          title={(data.className && SUBCLASS_LEVELS[data.className as keyof typeof SUBCLASS_LEVELS] === Number(data.level)) ? 'Attach Subclass' : (qualifiesForImprovements ? 'Attach ASI' : 'Attach Feature Choices')}
+          style={{ position: 'absolute', bottom: -10, left: '50%', transform: 'translateX(8px)', width: 20, height: 20, borderRadius: 999, border: '1px solid #e2e8f0', background: '#fff', color: '#0f172a', cursor: 'pointer', boxShadow: '0 1px 2px rgba(0,0,0,0.06)' }}
+        >+
+        </button>
+      ) : null}
+          {/* Tiny count badge for attached decisions (only shows on class steps and when > 0) */}
+  {data?.type === 'class' && attachedChoiceCount > 0 ? (
+        <div
+          className="nodrag nopan"
+          style={{ position: 'absolute', bottom: -4, left: '50%', transform: 'translateX(10px)', background: '#0ea5e9', color: '#fff', fontSize: 10, lineHeight: '14px', height: 16, minWidth: 16, padding: '0 4px', borderRadius: 999, border: '2px solid #fff', textAlign: 'center', boxShadow: '0 1px 2px rgba(0,0,0,0.08)' }}
+          title="Attached feature choices"
+        >{attachedChoiceCount}</div>
+      ) : null}
   <PanelBox title={`Step — ${summary}`}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -282,18 +449,19 @@ function ProgressStepNode({ id, data }: { id: string; data: ProgressStepData }) 
         </div>
   {!data.collapsed && (
   <>
-    <label style={{ display: 'grid', gap: 6, fontSize: 12, color: '#475569' }}>
-          <span>Character Level</span>
-          <input type="number" min={1} max={20} value={data.level}
-                 onChange={(e) => data.onChange?.({ level: Math.max(1, Math.min(20, parseInt(e.target.value || '1', 10))) })}
-                 style={inp} />
-        </label>
+  <label style={{ display: 'grid', gap: 6, fontSize: 12, color: '#475569' }}>
+      <span>Character Level</span>
+      <input type="number" min={1} max={20} value={data.level}
+         onChange={(e) => data.onChange?.({ level: Math.max(1, Math.min(20, parseInt(e.target.value || '1', 10))) })}
+         style={inp} />
+    </label>
         <label style={{ display: 'grid', gap: 6, fontSize: 12, color: '#475569' }}>
           <span>Step Type</span>
           <select value={data.type} onChange={(e) => data.onChange?.({ type: e.target.value as StepType })} style={inp}>
             <option value="class">Class Level</option>
             <option value="feat">Feat</option>
             <option value="asi">ASI</option>
+            <option value="bundle">Feature Choices</option>
             <option value="note">Note</option>
           </select>
         </label>
@@ -316,7 +484,10 @@ function ProgressStepNode({ id, data }: { id: string; data: ProgressStepData }) 
                 style={{ display: 'inline-flex', alignItems: 'center', minWidth: 72, padding: '4px 8px', borderRadius: 8, border: `2px dashed ${over === 'class' ? '#0ea5e9' : '#cbd5e1'}`, background: over === 'class' ? '#e0f2fe' : '#f8fafc', color: '#0f172a', fontSize: 12, gap: 6 }}
               >{data.className ? <span style={{ padding: '2px 6px', borderRadius: 999, background: '#e2e8f0', fontSize: 12 }}>{data.className}</span> : <span style={{ color: '#64748b' }}>drop class here</span>}</span>
               <select value={data.className || 'Fighter'} onChange={(e) => data.onChange?.({ className: e.target.value as any })} style={inp}>
-                {(CLASSES as readonly string[]).map((c: string) => (<option key={c} value={c}>{c}</option>))}
+                {(CLASSES as readonly string[])
+                  .slice()
+                  .sort((a, b) => a.localeCompare(b))
+                  .map((c: string) => (<option key={c} value={c}>{c}</option>))}
               </select>
             </div>
           </label>
@@ -360,6 +531,146 @@ function ProgressStepNode({ id, data }: { id: string; data: ProgressStepData }) 
             </div>
           </div>
         )}
+        {data.type === 'bundle' && (
+          <div style={{ display: 'grid', gap: 10, fontSize: 12, color: '#475569' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span>Feature Choices</span>
+              <button
+                style={btn}
+                onClick={() => {
+                  const newChoice: FeatureChoice = { id: `ch-${crypto.randomUUID().slice(0,6)}`, kind: 'fighting-style', style: undefined }
+                  data.onChange?.({ featureChoices: [...(data.featureChoices || []), newChoice] })
+                }}
+              >+ Add Choice</button>
+            </div>
+            <div style={{ display: 'grid', gap: 8 }}>
+              {(data.featureChoices || []).map((c, idx) => (
+                <div key={c.id} style={{ border: '1px solid #e2e8f0', borderRadius: 8, padding: 8, background: '#f8fafc', display: 'grid', gap: 8 }}>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                      <span>Kind</span>
+                      <select
+                        value={c.kind}
+                        onChange={(e) => {
+                          const kind = e.target.value as FeatureChoice['kind']
+                          const base = kind === 'fighting-style' ? { id: c.id, kind, style: undefined as string | undefined } :
+                                       kind === 'skill-proficiency' ? { id: c.id, kind, skills: [] as string[], count: 2 } :
+                                       { id: c.id, kind, text: '' as string }
+                          const next = [...(data.featureChoices || [])]
+                          next[idx] = base as FeatureChoice
+                          data.onChange?.({ featureChoices: next })
+                        }}
+                        style={inp}
+                      >
+                        <option value="fighting-style">Fighting Style</option>
+                        <option value="skill-proficiency">Skill Proficiencies</option>
+                        <option value="other">Other</option>
+                      </select>
+                    </div>
+                    <button style={btn} title="Remove" onClick={() => data.onChange?.({ featureChoices: (data.featureChoices || []).filter((x) => x.id !== c.id) })}>×</button>
+                  </div>
+
+                  {c.kind === 'fighting-style' && (
+                    <label style={{ display: 'grid', gap: 6 }}>
+                      <span>Fighting Style</span>
+                      <select
+                        value={(c as any).style || ''}
+                        onChange={(e) => {
+                          const next = [...(data.featureChoices || [])]
+                          next[idx] = { ...(c as any), style: e.target.value } as FeatureChoice
+                          data.onChange?.({ featureChoices: next })
+                        }}
+                        style={inp}
+                      >
+                        <option value="">Select…</option>
+                        {(FIGHTING_STYLES as readonly string[]).map((s) => (<option key={s} value={s}>{s}</option>))}
+                      </select>
+                    </label>
+                  )}
+
+                  {/* Subclass is a dedicated step type */}
+
+                  {c.kind === 'skill-proficiency' && (
+                    <div style={{ display: 'grid', gap: 6 }}>
+                      <label style={{ display: 'grid', gap: 6 }}>
+                        <span>Choose up to</span>
+                        <input
+                          type="number" min={1} max={6}
+                          value={(c as any).count ?? 2}
+                          onChange={(e) => {
+                            const val = Math.max(1, Math.min(6, parseInt(e.target.value || '1', 10)))
+                            const next = [...(data.featureChoices || [])]
+                            const cur = { ...(c as any) }
+                            cur.count = val
+                            if (Array.isArray(cur.skills) && cur.skills.length > val) cur.skills = cur.skills.slice(0, val)
+                            next[idx] = cur as FeatureChoice
+                            data.onChange?.({ featureChoices: next })
+                          }}
+                          style={{ ...inp, width: 80 }}
+                        />
+                      </label>
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                        {(SKILLS as readonly string[]).map((s) => {
+                          const sel = Array.isArray((c as any).skills) ? (c as any).skills : []
+                          const max = (c as any).count ?? 2
+                          const checked = sel.includes(s)
+                          const disabled = !checked && sel.length >= max
+                          return (
+                            <label key={s} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, border: '1px solid #cbd5e1', padding: '4px 8px', borderRadius: 8, background: disabled ? '#f1f5f9' : '#fff', color: disabled ? '#94a3b8' : '#0f172a' }}>
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                disabled={disabled}
+                                onChange={(e) => {
+                                  const next = [...(data.featureChoices || [])]
+                                  const cur = { ...(c as any) }
+                                  const arr: string[] = Array.isArray(cur.skills) ? cur.skills.slice() : []
+                                  if (e.target.checked) { if (!arr.includes(s) && arr.length < max) arr.push(s) }
+                                  else { const i = arr.indexOf(s); if (i >= 0) arr.splice(i, 1) }
+                                  cur.skills = arr
+                                  next[idx] = cur as FeatureChoice
+                                  data.onChange?.({ featureChoices: next })
+                                }}
+                              />
+                              <span style={{ fontSize: 12 }}>{s}</span>
+                            </label>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {c.kind === 'other' && (
+                    <label style={{ display: 'grid', gap: 6 }}>
+                      <span>Details</span>
+                      <input
+                        value={(c as any).text || ''}
+                        onChange={(e) => {
+                          const next = [...(data.featureChoices || [])]
+                          next[idx] = { ...(c as any), text: e.target.value } as FeatureChoice
+                          data.onChange?.({ featureChoices: next })
+                        }}
+                        placeholder="Describe the choice"
+                        style={inp}
+                      />
+                    </label>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        {data.type === 'subclass' && (
+          <div style={{ display: 'grid', gap: 6, fontSize: 12, color: '#475569' }}>
+            <span>Subclass</span>
+            <input
+              value={data.subclass || ''}
+              onChange={(e) => data.onChange?.({ subclass: e.target.value })}
+              placeholder="Champion / Battle Master / Arcane Trickster …"
+              style={inp}
+            />
+          </div>
+        )}
   {/* Notes removed per request; Tags/Checklist removed */}
   </>
         )}
@@ -380,24 +691,26 @@ function ProgressStepNode({ id, data }: { id: string; data: ProgressStepData }) 
               style={{ position: 'absolute', left: 28, top: '50%', transform: 'translateY(-50%)', display: 'flex', gap: 8, background: 'white', border: '1px solid #e2e8f0', borderRadius: 999, padding: '4px 8px', boxShadow: '0 6px 20px rgba(0,0,0,0.08)' }}
               onClick={(e) => e.stopPropagation()}
             >
-              {(['class','feat','asi','note'] as StepType[]).map((k) => (
+              {(['class','feat','asi','bundle','subclass','note'] as StepType[]).map((k) => (
                 <button
                   key={k}
                   className="nodrag nopan"
                   style={{ ...btn, padding: '4px 8px' }}
                   onClick={(e) => {
-                    e.preventDefault()
+                    e.preventDefault(); e.stopPropagation()
                     data.onAddChild?.(k)
                     const dtl = (e.currentTarget as HTMLElement).closest('details') as HTMLDetailsElement | null
                     if (dtl && dtl.hasAttribute('open')) dtl.removeAttribute('open')
                   }}
+                  onPointerDown={(e) => { e.stopPropagation() }}
+                  onMouseDown={(e) => { e.stopPropagation() }}
                 >{k}</button>
               ))}
             </div>
           </details>
         </div>
       ) : null}
-      <Handle type="source" position={Position.Right} />
+  <Handle type="source" position={Position.Right} />
     </div>
   )
 }
@@ -419,8 +732,9 @@ function RootNode({ id, data }: { id: string; data: RootNodeData }) {
   const toggleCollapsed = () => data.onChange?.({ collapsed: !data.collapsed })
   const [over, setOver] = useState<string | null>(null)
 
+  const activeGlow = data?._active ? '0 0 0 2px rgba(14,165,233,0.35), 0 6px 20px rgba(14,165,233,0.25)' : '0 1px 2px rgba(0,0,0,0.06)'
   return (
-    <div style={{ position: 'relative' }}>
+    <div style={{ position: 'relative', boxShadow: activeGlow }}>
       {/* Kebab actions */}
       <details className="nodrag nopan" style={{ position: 'absolute', top: 4, right: 4, zIndex: 10 }}>
         <summary
@@ -437,6 +751,9 @@ function RootNode({ id, data }: { id: string; data: RootNodeData }) {
         >
           <button className="nodrag nopan" style={btn} onClick={(e) => { e.preventDefault(); handleDelete(e as any); const dtl = (e.currentTarget as HTMLElement).closest('details') as HTMLDetailsElement | null; if (dtl) dtl.removeAttribute('open') }}>Delete</button>
           <button className="nodrag nopan" style={btn} onClick={(e) => { e.preventDefault(); toggleCollapsed(); const dtl = (e.currentTarget as HTMLElement).closest('details') as HTMLDetailsElement | null; if (dtl) dtl.removeAttribute('open') }}>{data.collapsed ? 'Show' : 'Hide'}</button>
+          {data.onClone ? (
+            <button className="nodrag nopan" style={btn} onClick={(e) => { e.preventDefault(); data.onClone?.(); const dtl = (e.currentTarget as HTMLElement).closest('details') as HTMLDetailsElement | null; if (dtl) dtl.removeAttribute('open') }}>Duplicate Branch</button>
+          ) : null}
           {data.onApply ? (
             <button className="nodrag nopan" style={btn} onClick={(e) => { e.preventDefault(); data.onApply?.(); const dtl = (e.currentTarget as HTMLElement).closest('details') as HTMLDetailsElement | null; if (dtl) dtl.removeAttribute('open') }}>Apply to Builder</button>
           ) : null}
@@ -530,17 +847,19 @@ function RootNode({ id, data }: { id: string; data: RootNodeData }) {
               style={{ position: 'absolute', left: 28, top: '50%', transform: 'translateY(-50%)', display: 'flex', gap: 8, background: 'white', border: '1px solid #e2e8f0', borderRadius: 999, padding: '4px 8px', boxShadow: '0 6px 20px rgba(0,0,0,0.08)' }}
               onClick={(e) => e.stopPropagation()}
             >
-              {(['class','feat','asi','note'] as StepType[]).map((k) => (
+              {(['class','feat','asi','bundle','note'] as StepType[]).map((k) => (
                 <button
                   key={k}
                   className="nodrag nopan"
                   style={{ ...btn, padding: '4px 8px' }}
                   onClick={(e) => {
-                    e.preventDefault()
+                    e.preventDefault(); e.stopPropagation()
                     data.onAddChild?.(k)
                     const dtl = (e.currentTarget as HTMLElement).closest('details') as HTMLDetailsElement | null
                     if (dtl && dtl.hasAttribute('open')) dtl.removeAttribute('open')
                   }}
+                  onPointerDown={(e) => { e.stopPropagation() }}
+                  onMouseDown={(e) => { e.stopPropagation() }}
                 >{k}</button>
               ))}
             </div>
@@ -593,7 +912,7 @@ function buildPlanFromRoot(nodes: any[], edges: any[], rootId: string) {
   for (const n of seq) {
     const lvl = Number(n.data?.level || 0)
     if (!lvl) continue
-  const cur = byLevel.get(lvl) || { level: lvl, feats: [] as string[] }
+    const cur = byLevel.get(lvl) || { level: lvl, feats: [] as string[], featureChoices: [] as any[] }
     if (n.data?.className) cur.className = n.data.className
     const feats: string[] = [
       ...(Array.isArray(n.data?.feats) ? n.data.feats.filter((x: any) => !!x) : []),
@@ -603,6 +922,38 @@ function buildPlanFromRoot(nodes: any[], edges: any[], rootId: string) {
     if (n.data?.asi) cur.asi = n.data.asi
     if (n.data?.ability1) cur.ability1 = n.data.ability1
     if (n.data?.ability2) cur.ability2 = n.data.ability2
+    // Include feature choices defined directly on this node
+    if (Array.isArray(n.data?.featureChoices) && n.data.featureChoices.length) cur.featureChoices = [...(cur.featureChoices || []), ...n.data.featureChoices]
+    // Also include feature choices from any incoming edges connected to the single bottom attach handle
+    // This allows attaching bundle nodes (and ASIs) to a class level without affecting the main progression chain
+    if (n.data?.type === 'class') {
+  const incomingChoiceEdges = (edges as any[]).filter((e) => e.target === n.id && e?.targetHandle === 'attach')
+      for (const e of incomingChoiceEdges) {
+        const src = idToNode.get(e.source)
+        if (!src || src.type !== 'progressStep') continue
+        if (src.data?.type === 'bundle' && Array.isArray(src.data?.featureChoices)) {
+          cur.featureChoices = [...(cur.featureChoices || []), ...src.data.featureChoices]
+        } else if (src.data?.type === 'asi') {
+          // Prefer explicit asi string; else build from tokens
+          const asiStr = src.data.asi || buildAsiString(src.data.ability1, src.data.ability2)
+          if (!cur.asi && asiStr) cur.asi = asiStr
+          if (!cur.ability1 && src.data.ability1) cur.ability1 = src.data.ability1
+          if (!cur.ability2 && src.data.ability2) cur.ability2 = src.data.ability2
+        } else if (src.data?.type === 'subclass') {
+          if (!cur.subclass) cur.subclass = src.data.subclass || ''
+        }
+      }
+      // Deduplicate feature choices by id if present
+      if (Array.isArray(cur.featureChoices)) {
+        const seen = new Set<string>()
+        cur.featureChoices = cur.featureChoices.filter((fc: any) => {
+          const k = fc && typeof fc === 'object' && fc.id ? String(fc.id) : JSON.stringify(fc)
+          if (seen.has(k)) return false
+          seen.add(k)
+          return true
+        })
+      }
+    }
   if (typeof n.data?.notes === 'string' && n.data.notes && !cur.notes) cur.notes = n.data.notes
     byLevel.set(lvl, cur)
   }
@@ -618,15 +969,15 @@ function buildPlanFromRoot(nodes: any[], edges: any[], rootId: string) {
 // Helper to build a plan starting at a given node (progressStep), using its branch forward
 function buildPlanFromStart(nodes: any[], edges: any[], startId: string) {
   const idToNode = new Map(nodes.map((n) => [n.id, n] as const))
-  // Find nearest ancestor root for race/background
+  // Find nearest ancestor root for race/background and gather all prior steps up to startId
   let cur: string | undefined = startId
   let guard = 0
   let rootId: string | undefined
+  const upstreamSteps: any[] = []
   while (cur && guard < 256) {
     guard += 1
     const incoming = (edges as any[]).filter((e) => e.target === cur)
     if (!incoming.length) break
-    // prefer parent with lowest Y (stable visual ordering)
     const parentId = incoming
       .map((e) => ({ e, n: idToNode.get(e.source) }))
       .filter((x) => !!x.n)
@@ -635,17 +986,18 @@ function buildPlanFromStart(nodes: any[], edges: any[], startId: string) {
     const pn = idToNode.get(parentId)
     if (!pn) break
     if (pn.type === 'root') { rootId = pn.id; break }
+    if (pn.type === 'progressStep') upstreamSteps.push(pn)
     cur = pn.id
   }
   const rootNode = rootId ? idToNode.get(rootId) : undefined
   // Walk forward from startId
-  const seq: any[] = []
+  const forwardSeq: any[] = []
   cur = startId
   guard = 0
   while (cur && guard < 256) {
     guard += 1
     const n = idToNode.get(cur)
-    if (n && n.type === 'progressStep') seq.push(n)
+    if (n && n.type === 'progressStep') forwardSeq.push(n)
     const outs = (edges as any[]).filter((e) => e.source === cur)
     if (!outs.length) break
     const nextId = outs
@@ -655,12 +1007,13 @@ function buildPlanFromStart(nodes: any[], edges: any[], startId: string) {
     if (!nextId) break
     cur = nextId
   }
-  // Aggregate by level starting from this node forward
+  // Combine upstream (reversed to chronological) + forward, then aggregate by level
+  const seq = [...upstreamSteps.reverse(), ...forwardSeq]
   const byLevel = new Map<number, any>()
   for (const n of seq) {
     const lvl = Number(n.data?.level || 0)
     if (!lvl) continue
-  const cur = byLevel.get(lvl) || { level: lvl, feats: [] as string[] }
+    const cur = byLevel.get(lvl) || { level: lvl, feats: [] as string[], featureChoices: [] as any[] }
     if (n.data?.className) cur.className = n.data.className
     const feats: string[] = [
       ...(Array.isArray(n.data?.feats) ? n.data.feats.filter((x: any) => !!x) : []),
@@ -670,7 +1023,36 @@ function buildPlanFromStart(nodes: any[], edges: any[], startId: string) {
     if (n.data?.asi) cur.asi = n.data.asi
     if (n.data?.ability1) cur.ability1 = n.data.ability1
     if (n.data?.ability2) cur.ability2 = n.data.ability2
-  if (typeof n.data?.notes === 'string' && n.data.notes && !cur.notes) cur.notes = n.data.notes
+    // Direct feature choices on this node
+    if (Array.isArray(n.data?.featureChoices) && n.data.featureChoices.length) cur.featureChoices = [...(cur.featureChoices || []), ...n.data.featureChoices]
+    // Attached choices via bottom single attach handle
+    if (n.data?.type === 'class') {
+      const incomingChoiceEdges = (edges as any[]).filter((e) => e.target === n.id && e?.targetHandle === 'attach')
+      for (const e of incomingChoiceEdges) {
+        const src = idToNode.get(e.source)
+        if (!src || src.type !== 'progressStep') continue
+        if (src.data?.type === 'bundle' && Array.isArray(src.data?.featureChoices)) {
+          cur.featureChoices = [...(cur.featureChoices || []), ...src.data.featureChoices]
+        } else if (src.data?.type === 'asi') {
+          const asiStr = src.data.asi || buildAsiString(src.data.ability1, src.data.ability2)
+          if (!cur.asi && asiStr) cur.asi = asiStr
+          if (!cur.ability1 && src.data.ability1) cur.ability1 = src.data.ability1
+          if (!cur.ability2 && src.data.ability2) cur.ability2 = src.data.ability2
+        } else if (src.data?.type === 'subclass') {
+          if (!cur.subclass) cur.subclass = src.data.subclass || ''
+        }
+      }
+      if (Array.isArray(cur.featureChoices)) {
+        const seen = new Set<string>()
+        cur.featureChoices = cur.featureChoices.filter((fc: any) => {
+          const k = fc && typeof fc === 'object' && fc.id ? String(fc.id) : JSON.stringify(fc)
+          if (seen.has(k)) return false
+          seen.add(k)
+          return true
+        })
+      }
+    }
+    if (typeof n.data?.notes === 'string' && n.data.notes && !cur.notes) cur.notes = n.data.notes
     byLevel.set(lvl, cur)
   }
   const levels = Array.from(byLevel.values()).sort((a, b) => a.level - b.level)
@@ -698,64 +1080,7 @@ function BranchActions(props: {
 
   const buildPlan = useCallback(() => {
     if (!selectedRoot) return null
-    const idToNode = new Map(props.nodes.map((n) => [n.id, n] as const))
-    const outEdgesBySource = new Map<string, any[]>(props.edges.reduce((m: [string, any[]][], e: any) => {
-      const arr = (outEdgesBySource as any).get?.(e.source) || []
-      arr.push(e)
-      m.push([e.source, arr])
-      return m
-    }, []))
-    // Simple chain walk: follow the first outgoing edge each time, preferring lowest Y position of target
-    const seq: any[] = []
-    let cur = selectedRoot
-    let guard = 0
-    while (cur && guard < 256) {
-      guard += 1
-      const outs = (props.edges as any[]).filter((e) => e.source === cur)
-      if (!outs.length) break
-      const nextId = outs
-        .map((e) => ({ e, n: idToNode.get(e.target) }))
-        .filter((x) => !!x.n)
-        .sort((a, b) => (a.n!.position?.y || 0) - (b.n!.position?.y || 0))[0]?.n?.id
-      if (!nextId) break
-      const nn = idToNode.get(nextId)
-      if (!nn) break
-      if (nn.type === 'progressStep') seq.push(nn)
-      cur = nextId
-    }
-    // Fallback: if no sequential walk found, include all reachable step nodes sorted by level
-    if (!seq.length) {
-      const reach = new Set<string>()
-      const stack = [selectedRoot]
-      while (stack.length) {
-        const s = stack.pop()!
-        if (reach.has(s)) continue
-        reach.add(s)
-        props.edges.filter((e) => e.source === s).forEach((e) => stack.push(e.target))
-      }
-      seq.push(...props.nodes.filter((n) => n.type === 'progressStep' && reach.has(n.id)))
-      seq.sort((a, b) => (a.data?.level || 0) - (b.data?.level || 0) || (a.position?.y || 0) - (b.position?.y || 0))
-    }
-
-    const rootNode = idToNode.get(selectedRoot)
-    const plan = {
-      race: rootNode?.data?.race,
-      background: rootNode?.data?.background,
-      levels: seq.map((n) => ({
-        level: n.data?.level,
-        className: n.data?.className,
-        feats: [
-          ...(Array.isArray(n.data?.feats) ? n.data.feats.filter((x: any) => !!x) : []),
-          ...(n.data?.featName ? [n.data.featName] : []),
-        ],
-        asi: n.data?.asi,
-        ability1: n.data?.ability1,
-        ability2: n.data?.ability2,
-        notes: n.data?.notes,
-  // tags removed
-      })),
-    }
-    return plan
+  return buildPlanFromRoot(props.nodes as any, props.edges as any, selectedRoot)
   }, [props.nodes, props.edges, selectedRoot])
 
   return (
@@ -771,6 +1096,7 @@ function BranchActions(props: {
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         <button disabled={!selectedRoot} onClick={() => selectedRoot && props.onClone(selectedRoot)} style={btn}>Duplicate Branch</button>
   <button onClick={() => props.onCreateRoot?.()} style={btn}>+ New Root</button>
+  <button disabled={!selectedRoot} onClick={() => { const p = buildPlan(); if (p && props.onApplyPlan) props.onApplyPlan(p) }} style={btn}>Apply to Builder</button>
       </div>
     </div>
   )
@@ -780,6 +1106,7 @@ export function ProgressionPlanner(props: { character?: BuilderState; derived?: 
   // Seed from Builder by default; keep state empty until seeded
   const [nodes, setNodes, baseOnNodesChange] = useNodesState<any>([] as any)
   const [edges, setEdges, baseOnEdgesChange] = useEdgesState([])
+  const [activeRootId, setActiveRootId] = useState<string | undefined>(undefined)
   const seededRef = useRef(false)
   const loadedFromStorageRef = useRef(false)
 
@@ -787,6 +1114,34 @@ export function ProgressionPlanner(props: { character?: BuilderState; derived?: 
   const storageKey = useMemo(() => `${STORAGE_KEY_BASE}:${props.character?.name || 'default'}`, [props.character?.name])
   const DISMISS_KEY_BASE = 'progressionPlanner.reseedDismissed.v1'
   const dismissKey = useMemo(() => `${DISMISS_KEY_BASE}:${props.character?.name || 'default'}`,[props.character?.name])
+  const ACTIVE_KEY_BASE = 'progressionPlanner.activeRoot.v1'
+  const activeKey = useMemo(() => `${ACTIVE_KEY_BASE}:${props.character?.name || 'default'}`,[props.character?.name])
+  // Persist the currently active plan for Builder to optionally import when returning from Planner
+  const ACTIVE_PLAN_KEY_BASE = 'progressionPlanner.activePlan.v1'
+  const activePlanKey = useMemo(() => `${ACTIVE_PLAN_KEY_BASE}:${props.character?.name || 'default'}`,[props.character?.name])
+
+  // Highlight the active branch (reachable from activeRootId)
+  const computeActiveFlags = useCallback((nds: any[], eds: any[], rootId?: string) => {
+    const idToNode = new Map(nds.map((n) => [n.id, n] as const))
+    const active = new Set<string>()
+    if (rootId && idToNode.has(rootId)) {
+      const stack = [rootId]
+      while (stack.length) {
+        const cur = stack.pop()!
+        if (active.has(cur)) continue
+        active.add(cur)
+        eds.filter((e) => e.source === cur).forEach((e) => stack.push(e.target))
+      }
+    }
+    return { active }
+  }, [])
+
+  const applyActiveHighlight = useCallback((rootId?: string) => {
+    setNodes((nds: any[]) => {
+      const { active } = computeActiveFlags(nds as any, edges as any, rootId)
+      return nds.map((n: any) => ({ ...n, data: { ...n.data, _active: active.has(n.id) } }))
+    })
+  }, [edges, setNodes, computeActiveFlags])
 
   // Create default branch from Builder
   const seedFromBuilder = useCallback((ch: BuilderState | undefined, derived?: any) => {
@@ -922,10 +1277,12 @@ export function ProgressionPlanner(props: { character?: BuilderState; derived?: 
         seq.push(...(nodes as any[]).filter((n) => n.type === 'progressStep' && reach.has(n.id)))
         seq.sort((a, b) => (a.data?.level || 0) - (b.data?.level || 0) || (a.position?.y || 0) - (b.position?.y || 0))
       }
+      // Only consider class steps when computing the signature to avoid ASI/bundle/subclass nodes affecting matching
       const classes = seq
         .slice()
+        .filter((n) => (n as any)?.data?.type === 'class' && !!(n as any)?.data?.className)
         .sort((a, b) => (a.data?.level || 0) - (b.data?.level || 0) || (a.position?.y || 0) - (b.position?.y || 0))
-        .map((n) => n.data?.className || '')
+        .map((n) => (n as any).data.className as string)
       sigs.push(JSON.stringify({ race: r.data?.race || '', background: r.data?.background || '', classes }))
     }
     return sigs
@@ -950,6 +1307,7 @@ export function ProgressionPlanner(props: { character?: BuilderState; derived?: 
     // 1) Try localStorage restore first
     try {
       const raw = localStorage.getItem(storageKey)
+  const savedActive = localStorage.getItem(activeKey) || undefined
       if (raw) {
         const parsed = JSON.parse(raw)
         if (parsed && Array.isArray(parsed.nodes) && Array.isArray(parsed.edges)) {
@@ -965,6 +1323,8 @@ export function ProgressionPlanner(props: { character?: BuilderState; derived?: 
           setEdges(parsed.edges as any)
           seededRef.current = true
           loadedFromStorageRef.current = true
+          setActiveRootId(savedActive)
+          applyActiveHighlight(savedActive)
           return
         }
       }
@@ -981,9 +1341,12 @@ export function ProgressionPlanner(props: { character?: BuilderState; derived?: 
   d.onAddChild = (k?: StepType) => addChild(n.id, k)
         return { ...n, data: d }
       })
-      setNodes(withHandlers as any)
+  setNodes(withHandlers as any)
       setEdges(seeded.edges as any)
       seededRef.current = true
+  // Set active to the newly seeded root that matches the Builder branch (first root)
+  const firstRoot = (withHandlers as any[]).find((n) => n.type === 'root')?.id
+  if (firstRoot) { setActiveRootId(firstRoot); localStorage.setItem(activeKey, firstRoot); applyActiveHighlight(firstRoot) }
     } else {
       // 3) Fallback minimal default
       const rid = `root-${crypto.randomUUID().slice(0, 6)}`
@@ -1000,9 +1363,10 @@ export function ProgressionPlanner(props: { character?: BuilderState; derived?: 
   d.onAddChild = (k?: StepType) => addChild(n.id, k)
         n.data = d
       })
-      setNodes(nodes0)
+  setNodes(nodes0)
       setEdges([{ id: `e-${crypto.randomUUID().slice(0, 6)}`, source: rid, target: sid }])
       seededRef.current = true
+  setActiveRootId(rid); localStorage.setItem(activeKey, rid); applyActiveHighlight(rid)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.character, props.derived])
@@ -1015,6 +1379,7 @@ export function ProgressionPlanner(props: { character?: BuilderState; derived?: 
         const d: any = { ...n.data }
         if (d) {
           delete d.onChange; delete d.onDelete; delete d.onClone; delete d.onApply; delete d.onAddChild
+          delete d._active
         }
         return { id: n.id, type: n.type, position: n.position, data: d }
       })
@@ -1023,8 +1388,31 @@ export function ProgressionPlanner(props: { character?: BuilderState; derived?: 
     } catch {}
   }, [nodes, edges, storageKey])
 
+  // Re-apply highlight when active root, nodes, or edges change
+  React.useEffect(() => {
+    applyActiveHighlight(activeRootId)
+  }, [activeRootId, nodes.length, edges.length, applyActiveHighlight])
+
+  // Persist the active plan to localStorage so the App/Builder can prompt to apply when navigating back
+  React.useEffect(() => {
+    if (!seededRef.current) return
+    try {
+      const roots = (nodes as any[]).filter((n) => n.type === 'root')
+      const rid = activeRootId || roots[0]?.id
+      if (!rid) {
+        localStorage.removeItem(activePlanKey)
+        return
+      }
+      const plan = buildPlanFromRoot(nodes as any, edges as any, rid)
+      const payload = { plan, ts: Date.now() }
+      localStorage.setItem(activePlanKey, JSON.stringify(payload))
+    } catch {}
+  }, [nodes, edges, activeRootId, activePlanKey])
+
   // Scratch workspace state
   const [scratch, setScratch] = useState<ScratchBlock[]>([])
+  // Token filter for organizing the palette chips
+  const [tokenFilter, setTokenFilter] = useState('')
 
   const addScratchBlock = useCallback((kind: ScratchBlock['kind']) => {
     const id = `sb-${crypto.randomUUID().slice(0, 6)}`
@@ -1117,31 +1505,6 @@ export function ProgressionPlanner(props: { character?: BuilderState; derived?: 
 
   // Auto-arrange: account for expanded/collapsed heights per card and stack accordingly
   const autoArrange = useCallback(() => {
-    const idSet = new Set(nodes.map((n) => n.id))
-    const incoming: Record<string, number> = {}
-    nodes.forEach((n) => { incoming[n.id] = 0 })
-    edges.forEach((e) => { if (idSet.has(e.target)) incoming[e.target] = (incoming[e.target] || 0) + 1 })
-
-    // Compute depths via longest path propagation
-    const depth: Record<string, number> = {}
-    nodes.forEach((n) => { depth[n.id] = incoming[n.id] ? 0 : 0 })
-    for (let iter = 0; iter < nodes.length; iter += 1) {
-      let changed = false
-      for (const e of edges) {
-        const d = (depth[e.source] ?? 0) + 1
-        if ((depth[e.target] ?? 0) < d) { depth[e.target] = d; changed = true }
-      }
-      if (!changed) break
-    }
-
-    // Group by depth
-    const byDepth: Record<number, any[]> = {}
-    nodes.forEach((n) => {
-      const d = depth[n.id] ?? 0
-      if (!byDepth[d]) byDepth[d] = []
-      byDepth[d].push(n)
-    })
-
     // Helpers for estimated card heights (fallback to measured values if present)
     const getHeight = (n: any): number => {
       const measured = (n as any).height || (n as any).measured?.height
@@ -1151,28 +1514,118 @@ export function ProgressionPlanner(props: { character?: BuilderState; derived?: 
       // progressStep or others
       return collapsed ? 140 : 560
     }
+    // Determine the nearest root (branch) for each node to isolate layout per branch
+    const idToNode = new Map(nodes.map((n) => [n.id, n] as const))
+    const findRoot = (id: string): string | undefined => {
+      let cur: string | undefined = id
+      let guard = 0
+      while (cur && guard < 256) {
+        guard += 1
+        const incoming = edges.filter((e) => e.target === cur)
+        if (!incoming.length) break
+        const parentId = incoming
+          .map((e) => ({ e, n: idToNode.get(e.source) }))
+          .filter((x) => !!x.n)
+          .sort((a, b) => (a.n!.position?.y || 0) - (b.n!.position?.y || 0))[0]?.n?.id
+        if (!parentId) break
+        const pn = idToNode.get(parentId)
+        if (!pn) break
+        if (pn.type === 'root') return pn.id
+        cur = pn.id
+      }
+      return undefined
+    }
 
-    const dx = 360 // allow more room for expanded nodes
-    const gapY = 24
-    const x0 = 40
-    const y0 = 60
-    const nextPositions: Record<string, { x: number; y: number }> = {}
-    const depths = Object.keys(byDepth).map((k) => parseInt(k, 10)).sort((a, b) => a - b)
-    depths.forEach((d, colIdx) => {
-      const arr = byDepth[d]
-      arr.sort((a, b) => {
-        const la = typeof a.data?.level === 'number' ? a.data.level : Number.MAX_SAFE_INTEGER
-        const lb = typeof b.data?.level === 'number' ? b.data.level : Number.MAX_SAFE_INTEGER
-        if (la !== lb) return la - lb
-        if (a.type !== b.type) return String(a.type).localeCompare(String(b.type))
-        return String(a.id).localeCompare(String(b.id))
-      })
-      let yAcc = y0
-      arr.forEach((n) => {
-        nextPositions[n.id] = { x: x0 + colIdx * dx, y: yAcc }
-        yAcc += getHeight(n) + gapY
-      })
+    // Group nodes by root id (branch)
+    const groups = new Map<string, any[]>()
+    const groupKeyOf = (n: any) => (n.type === 'root' ? n.id : (findRoot(n.id) || `ungrouped-${n.id}`))
+    nodes.forEach((n) => {
+      const k = groupKeyOf(n)
+      const arr = groups.get(k) || []
+      arr.push(n)
+      groups.set(k, arr)
     })
+
+    const dx = 360
+    const gapY = 24
+    const baseX = 40
+    const y0 = 60
+    const groupDX = 520 // horizontal spacing between branches
+    const nextPositions: Record<string, { x: number; y: number }> = {}
+
+  // Plan positions per group first (anchored at root.x), then stack groups vertically with spacing
+  const plannedGroups: Array<{ key: string; positions: Record<string, { x: number; y: number }>; minX: number; maxX: number; minY: number; maxY: number; rootX: number; rootY: number }> = []
+
+    Array.from(groups.entries()).forEach(([groupKey, groupNodes], gIdx) => {
+      const idSet = new Set(groupNodes.map((n) => n.id))
+      const incoming: Record<string, number> = {}
+      groupNodes.forEach((n) => { incoming[n.id] = 0 })
+      edges.forEach((e) => { if (idSet.has(e.target) && idSet.has(e.source)) incoming[e.target] = (incoming[e.target] || 0) + 1 })
+
+      const depth: Record<string, number> = {}
+      groupNodes.forEach((n) => { depth[n.id] = incoming[n.id] ? 0 : 0 })
+      for (let iter = 0; iter < groupNodes.length; iter += 1) {
+        let changed = false
+        for (const e of edges) {
+          if (!idSet.has(e.source) || !idSet.has(e.target)) continue
+          const d = (depth[e.source] ?? 0) + 1
+          if ((depth[e.target] ?? 0) < d) { depth[e.target] = d; changed = true }
+        }
+        if (!changed) break
+      }
+
+      const byDepth: Record<number, any[]> = {}
+      groupNodes.forEach((n) => {
+        const d = depth[n.id] ?? 0
+        if (!byDepth[d]) byDepth[d] = []
+        byDepth[d].push(n)
+      })
+
+      // Anchor at this group's root X when available, else fallback to a lane
+      const maybeRoot = groupNodes.find((n) => n.type === 'root')
+      const anchorX = (maybeRoot?.position?.x ?? (baseX + gIdx * groupDX))
+
+  const positions: Record<string, { x: number; y: number }> = {}
+  let minX = Number.POSITIVE_INFINITY
+  let maxX = Number.NEGATIVE_INFINITY
+  let minY = Number.POSITIVE_INFINITY
+  let maxY = Number.NEGATIVE_INFINITY
+      const depths = Object.keys(byDepth).map((k) => parseInt(k, 10)).sort((a, b) => a - b)
+      depths.forEach((d, colIdx) => {
+        const arr = byDepth[d]
+        arr.sort((a, b) => {
+          const la = typeof a.data?.level === 'number' ? a.data.level : Number.MAX_SAFE_INTEGER
+          const lb = typeof b.data?.level === 'number' ? b.data.level : Number.MAX_SAFE_INTEGER
+          if (la !== lb) return la - lb
+          if (a.type !== b.type) return String(a.type).localeCompare(String(b.type))
+          return String(a.id).localeCompare(String(b.id))
+        })
+        let yAcc = y0
+        arr.forEach((n) => {
+          const x = anchorX + colIdx * dx
+          positions[n.id] = { x, y: yAcc }
+          minX = Math.min(minX, x)
+          maxX = Math.max(maxX, x)
+          minY = Math.min(minY, yAcc)
+          maxY = Math.max(maxY, yAcc + getHeight(n))
+          yAcc += getHeight(n) + gapY
+        })
+      })
+
+      plannedGroups.push({ key: groupKey, positions, minX, maxX, minY, maxY, rootX: maybeRoot?.position?.x ?? (baseX + gIdx * groupDX), rootY: maybeRoot?.position?.y ?? y0 })
+    })
+
+    // Stack groups vertically by their root Y, with sufficient vertical spacing so branches don't touch
+    plannedGroups.sort((a, b) => a.rootY - b.rootY)
+    let curTop = y0
+    const branchGapY = 120
+    for (const g of plannedGroups) {
+      const height = Math.max(0, g.maxY - g.minY)
+      const shiftY = curTop - g.minY
+      Object.keys(g.positions).forEach((id) => { g.positions[id].y += shiftY })
+      curTop += height + branchGapY
+      Object.assign(nextPositions, g.positions)
+    }
 
     snapshot()
     setNodes((nds) => nds.map((n) => ({ ...n, position: nextPositions[n.id] ? nextPositions[n.id] : n.position })))
@@ -1230,6 +1683,10 @@ export function ProgressionPlanner(props: { character?: BuilderState; derived?: 
       data = { ...base, featName: '', feats: [] }
     } else if (chosen === 'asi') {
       data = { ...base, asi: '', ability1: null, ability2: null }
+    } else if (chosen === 'bundle') {
+      data = { ...base, featureChoices: [] }
+    } else if (chosen === 'subclass') {
+      data = { ...base, type: 'subclass', subclass: '' }
     } else if (chosen === 'note') {
       data = { ...base, notes: '' }
     }
@@ -1243,7 +1700,13 @@ export function ProgressionPlanner(props: { character?: BuilderState; derived?: 
       // onApply for steps will be injected by the wiring effect if missing
       return [...nds, node]
     })
-  setEdges((eds: any[]) => [...eds, { id: `e-${crypto.randomUUID().slice(0, 6)}`, source: sourceId, target: newId }])
+    // If adding a bundle or ASI from a class step, connect their top handle to the single class bottom handle
+    const isClassSrc = (idToNode.get(sourceId)?.type === 'progressStep') && (idToNode.get(sourceId) as any)?.data?.type === 'class'
+  if (isClassSrc && (chosen === 'bundle' || chosen === 'asi' || chosen === 'subclass')) {
+      setEdges((eds: any[]) => [...eds, { id: `e-${crypto.randomUUID().slice(0, 6)}`, source: newId, sourceHandle: 'top', target: sourceId, targetHandle: 'attach' }])
+    } else {
+      setEdges((eds: any[]) => [...eds, { id: `e-${crypto.randomUUID().slice(0, 6)}`, source: sourceId, target: newId }])
+    }
     // Auto-tidy after creation
   setTimeout(() => { try { (autoArrange as any)() } catch {} }, 0)
   }, [nodes, edges, props.character, setNodes, setEdges, snapshot, updateNodeData, removeNode, /* tidy */ autoArrange])
@@ -1308,9 +1771,10 @@ export function ProgressionPlanner(props: { character?: BuilderState; derived?: 
       if (!d.onChange) d.onChange = (p: any) => updateNodeData(n.id, p)
       if (!d.onDelete) d.onDelete = (id: string) => removeNode(id)
       if (n.type === 'root' && !d.onClone) d.onClone = () => cloneBranch(n.id)
-      if (n.type === 'root' && !d.onApply) {
+    if (n.type === 'root' && !d.onApply) {
         d.onApply = () => {
-          const plan: any = buildPlanFromRoot(nds as any, edges as any, n.id)
+      const rid = activeRootId || n.id
+      const plan: any = buildPlanFromRoot(nds as any, edges as any, rid)
           if (plan && props.onApplyPlan) props.onApplyPlan(plan)
         }
       }
@@ -1320,10 +1784,37 @@ export function ProgressionPlanner(props: { character?: BuilderState; derived?: 
           if (plan && props.onApplyPlan) props.onApplyPlan(plan)
         }
       }
-      if (!d.onAddChild) d.onAddChild = () => addChild(n.id)
+  // Ensure onAddChild forwards the selected kind when invoked from the + menu
+  // Always rebind so stale handlers get updated to forward the selected kind
+  d.onAddChild = (k?: StepType) => addChild(n.id, k)
+      // Bind duplicate-branch for step nodes: walk up to find ancestor root, then clone that branch
+      if (n.type === 'progressStep') {
+        d.onCloneFromSelf = () => {
+          let cur: string | undefined = n.id
+          let guard = 0
+          const idToNode = new Map((nds as any[]).map((x) => [x.id, x] as const))
+          let rootId: string | undefined
+          while (cur && guard < 256) {
+            guard += 1
+            const incoming = (edges as any[]).filter((e) => e.target === cur)
+            if (!incoming.length) break
+            const parentId = incoming
+              .map((e) => ({ e, nn: idToNode.get(e.source) }))
+              .filter((x) => !!x.nn)
+              .sort((a, b) => ((a.nn as any).position?.y || 0) - ((b.nn as any).position?.y || 0))[0]?.nn?.id
+            if (!parentId) break
+            const pn = idToNode.get(parentId)
+            if (!pn) break
+            if (pn.type === 'root') { rootId = pn.id; break }
+            cur = pn.id
+          }
+          if (rootId) cloneBranch(rootId)
+        }
+      }
       return { ...n, data: d }
     }))
   }, [updateNodeData, cloneBranch, edges, props.onApplyPlan, addChild, setNodes])
+  // include activeRootId in deps to keep onApply closures up-to-date
 
   // Generate tree from scratch blocks: create a new root + chain of steps
   const generateFromScratch = useCallback(() => {
@@ -1369,8 +1860,20 @@ export function ProgressionPlanner(props: { character?: BuilderState; derived?: 
 
   const addNode = (type: keyof typeof nodeTypes) => {
     const id = `${type}-${crypto.randomUUID().slice(0, 6)}`
-    const y = 40 + Math.random() * 720
-    const base: any = { id, type, position: { x: type === 'root' ? 40 : 360, y }, data: {} }
+    // Prefer deterministic placement to avoid overlapping other branches
+    const baseX = 40
+    const yBaseline = 120
+    const branchGapY = 160
+    let x = type === 'root' ? baseX : 360
+    let y = type === 'root' ? yBaseline : (40 + Math.random() * 720)
+    if (type === 'root') {
+      const roots = (nodes as any[]).filter((n) => n.type === 'root')
+      if (roots.length > 0) {
+        const maxRootBottom = Math.max(...roots.map((r) => Number(r.position?.y ?? yBaseline)))
+        y = maxRootBottom + branchGapY
+      }
+    }
+    const base: any = { id, type, position: { x, y }, data: {} }
   if (type === 'progressStep') Object.assign(base.data, { level: 1, type: 'class', className: 'Fighter', collapsed: false } as ProgressStepData)
   if (type === 'root') Object.assign(base.data, { race: '', background: '', collapsed: false } as RootNodeData)
     base.data.onChange = (p: any) => updateNodeData(id, p)
@@ -1388,11 +1891,21 @@ export function ProgressionPlanner(props: { character?: BuilderState; derived?: 
   return (
     <div className="w-full" style={{ display: 'grid', gridTemplateColumns: '1fr 360px', gap: 16, height: 'calc(100vh - 100px)' }}>
   <div style={{ height: '100%', border: '1px solid #e2e8f0', borderRadius: 12, overflow: 'hidden', background: 'white', position: 'relative' }}>
-        <ReactFlow nodes={nodes as any} edges={edges} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={onConnect} nodeTypes={nodeTypes as any} fitView>
-          <Background />
-          <MiniMap pannable zoomable />
-          <Controls showInteractive={false} />
-        </ReactFlow>
+  <style>{`.react-flow__edge.edge-active path { stroke: #0ea5e9 !important; stroke-width: 2.5px; }`}</style>
+        {(() => {
+          const idToActive = new Map((nodes as any[]).map((n: any) => [n.id, !!n.data?._active]))
+          const styledEdges = (edges as any[]).map((e: any) => {
+            const a = idToActive.get(e.source) && idToActive.get(e.target)
+            return a ? { ...e, className: 'edge-active' } : e
+          })
+          return (
+            <ReactFlow nodes={nodes as any} edges={styledEdges as any} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={onConnect} nodeTypes={nodeTypes as any} fitView>
+              <Background />
+              <MiniMap pannable zoomable />
+              <Controls showInteractive={false} />
+            </ReactFlow>
+          )
+        })()}
         {showReseedPrompt ? (
           <div style={{ position: 'absolute', left: 12, right: 12, bottom: 12, display: 'flex', justifyContent: 'center', pointerEvents: 'none' }}>
             <div style={{ pointerEvents: 'auto', maxWidth: 640, width: '100%', background: 'white', border: '1px solid #e2e8f0', borderRadius: 12, boxShadow: '0 6px 20px rgba(0,0,0,0.08)', padding: 12, display: 'grid', gap: 8 }}>
@@ -1416,6 +1929,10 @@ export function ProgressionPlanner(props: { character?: BuilderState; derived?: 
                                     return { ...n, data: d }
                                   }))
                     setEdges(seeded.edges as any)
+                    const firstRoot = (seeded.nodes as any[]).find((n) => n.type === 'root')?.id
+                    if (firstRoot) { setActiveRootId(firstRoot); localStorage.setItem(activeKey, firstRoot); applyActiveHighlight(firstRoot) }
+                    // Auto-arrange after reseed to tidy layout
+                    setTimeout(() => { try { (autoArrange as any)() } catch {} }, 0)
                     dismissReseedPrompt()
                   }}
                   style={{ ...btn, background: '#0ea5e9', borderColor: '#0284c7', color: 'white' }}
@@ -1443,7 +1960,7 @@ export function ProgressionPlanner(props: { character?: BuilderState; derived?: 
             <button onClick={autoArrange} style={btn} title="Auto-arrange nodes">Auto Arrange</button>
             <button onClick={expandAll} style={btn} title="Expand all nodes">Expand All</button>
             <button onClick={collapseAll} style={btn} title="Collapse all nodes">Collapse All</button>
-  <button onClick={() => { const seeded = seedFromBuilder(props.character, props.derived); if (!seeded) return; snapshot(); setNodes((seeded.nodes as any[]).map((n) => { const d: any = { ...n.data, onChange: (p: any) => updateNodeData(n.id, p), onDelete: (nid: string) => removeNode(nid) }; if (n.type === 'root') { d.onClone = () => cloneBranch(n.id); d.onApply = () => { const plan: any = buildPlanFromRoot(seeded.nodes as any, seeded.edges as any, n.id); if (plan && props.onApplyPlan) props.onApplyPlan(plan) } } if (n.type === 'progressStep') { d.onApply = () => { const plan: any = buildPlanFromStart(seeded.nodes as any, seeded.edges as any, n.id); if (plan && props.onApplyPlan) props.onApplyPlan(plan) } } d.onAddChild = (k?: StepType) => addChild(n.id, k); return { ...n, data: d } })); setEdges(seeded.edges as any) }} style={btn} title="Regenerate using current Builder">Reseed from Builder</button>
+  <button onClick={() => { const seeded = seedFromBuilder(props.character, props.derived); if (!seeded) return; snapshot(); setNodes((seeded.nodes as any[]).map((n) => { const d: any = { ...n.data, onChange: (p: any) => updateNodeData(n.id, p), onDelete: (nid: string) => removeNode(nid) }; if (n.type === 'root') { d.onClone = () => cloneBranch(n.id); d.onApply = () => { const plan: any = buildPlanFromRoot(seeded.nodes as any, seeded.edges as any, n.id); if (plan && props.onApplyPlan) props.onApplyPlan(plan) } } if (n.type === 'progressStep') { d.onApply = () => { const plan: any = buildPlanFromStart(seeded.nodes as any, seeded.edges as any, n.id); if (plan && props.onApplyPlan) props.onApplyPlan(plan) } } d.onAddChild = (k?: StepType) => addChild(n.id, k); return { ...n, data: d } })); setEdges(seeded.edges as any); const firstRoot = (seeded.nodes as any[]).find((n) => n.type === 'root')?.id; if (firstRoot) { setActiveRootId(firstRoot); localStorage.setItem(activeKey, firstRoot); applyActiveHighlight(firstRoot) } setTimeout(() => { try { (autoArrange as any)() } catch {} }, 0) }} style={btn} title="Regenerate using current Builder">Reseed from Builder</button>
           </div>
         </section>
 
@@ -1457,13 +1974,29 @@ export function ProgressionPlanner(props: { character?: BuilderState; derived?: 
             onApplyPlan={props.onApplyPlan}
             onCreateRoot={() => { addNode('root'); setTimeout(() => { try { (autoArrange as any)() } catch {} }, 0) }}
           />
+          <div style={{ padding: 12, display: 'grid', gap: 8 }}>
+            <label style={{ display: 'grid', gap: 6, fontSize: 12, color: '#475569' }}>
+              <span>Active Branch</span>
+              <select
+                value={activeRootId || ''}
+                onChange={(e) => { const v = e.target.value || undefined; setActiveRootId(v); if (v) localStorage.setItem(activeKey, v); applyActiveHighlight(v) }}
+                style={inp}
+              >
+                <option value="">(none)</option>
+                {(nodes as any[]).filter((n) => n.type === 'root').map((r) => (
+                  <option key={r.id} value={r.id}>{r.data?.race || 'Race'} • {r.data?.background || 'Background'} ({r.id.slice(0,6)})</option>
+                ))}
+              </select>
+            </label>
+            <div style={{ fontSize: 12, color: '#64748b' }}>The active branch is highlighted and drives the “Apply to Builder”.</div>
+          </div>
         </section>
 
         {/* Add Nodes */}
         <section style={card}>
           <div style={{ padding: 12, borderBottom: '1px solid #e2e8f0', fontWeight: 600 }}>Add Nodes</div>
           <div style={{ padding: 12, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-            <button onClick={() => addNode('root')} style={btn}>+ Root</button>
+            <button onClick={() => { addNode('root'); setTimeout(() => { try { (autoArrange as any)() } catch {} }, 0) }} style={btn}>+ Root</button>
             <button onClick={() => addNode('progressStep')} style={btn}>+ Step</button>
           </div>
           <div style={{ padding: '0 12px 12px', fontSize: 12, color: '#64748b' }}>Use Root to set Race and Background, then connect Steps to build branches. Clone a Root to fork a new branch with the same history.</div>
@@ -1474,8 +2007,8 @@ export function ProgressionPlanner(props: { character?: BuilderState; derived?: 
           <div style={{ padding: 12, borderBottom: '1px solid #e2e8f0', fontWeight: 600 }}>Scratch Blocks (beta)</div>
 
           {/* Palette */}
-          <div style={{ padding: 12, display: 'grid', gap: 10 }}>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <div style={{ padding: 12, display: 'grid', gap: 12 }}>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
               <BlockChip label="Class Block" color={blockColors.class} draggableData={{ kind: 'class' }} />
               <BlockChip label="Feat Block" color={blockColors.feat} draggableData={{ kind: 'feat' }} />
               <BlockChip label="ASI Block" color={blockColors.asi} draggableData={{ kind: 'asi' }} />
@@ -1486,14 +2019,87 @@ export function ProgressionPlanner(props: { character?: BuilderState; derived?: 
               <button onClick={() => addScratchBlock('asi')} style={btn}>+ ASI</button>
               <button onClick={() => addScratchBlock('note')} style={btn}>+ Note</button>
             </div>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              {(CLASSES as readonly string[]).map((c: string) => (<TokenChip key={c} label={c} type="class" value={c} />))}
-              {(ABILITIES as readonly string[]).map((a: string) => (<TokenChip key={a} label={a} type="ability" value={a} />))}
-              {(RACE_NAMES as readonly string[]).map((r: string) => (<TokenChip key={r} label={r} type="race" value={r} />))}
-              {(BACKGROUNDS as readonly string[]).map((b: string) => (<TokenChip key={b} label={b} type="background" value={b} />))}
-              {/* Simple text options for Other */}
-              {['Variant Rule', 'Alignment', 'Deity'].map((t) => (<TokenChip key={t} label={t} type="text" value={t} />))}
+            {/* Token filter */}
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <input
+                value={tokenFilter}
+                onChange={(e) => setTokenFilter(e.target.value)}
+                placeholder="Filter tokens (e.g., fighter, str, elf)"
+                style={{ ...inp, maxWidth: 320 }}
+              />
+              {tokenFilter ? (
+                <button style={{ ...btn, padding: '6px 10px' }} onClick={() => setTokenFilter('')}>Clear</button>
+              ) : null}
             </div>
+
+            {/* Organized token sections */}
+            {(() => {
+              const q = tokenFilter.trim().toLowerCase()
+              const filt = (s: string) => (q ? s.toLowerCase().includes(q) : true)
+              const classes = (CLASSES as readonly string[]).filter((c: string) => filt(c))
+              const abilities = (ABILITIES as readonly string[]).filter((a: string) => filt(a))
+              const races = (RACE_NAMES as readonly string[]).filter((r: string) => filt(r))
+              const backgrounds = (BACKGROUNDS as readonly string[]).filter((b: string) => filt(b))
+              const othersAll = ['Variant Rule', 'Alignment', 'Deity']
+              const others = othersAll.filter((t) => filt(t))
+
+              const showAll = q === ''
+
+              return (
+                <div style={{ display: 'grid', gap: 10 }}>
+                  {(showAll || classes.length) ? (
+                    <details open>
+                      <summary style={{ ...muted, cursor: 'pointer' }}>Classes</summary>
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', paddingTop: 6 }}>
+                        {classes.map((c: string) => (<TokenChip key={c} label={c} type="class" value={c} />))}
+                        {!classes.length ? <span style={muted}>No matches</span> : null}
+                      </div>
+                    </details>
+                  ) : null}
+
+                  {(showAll || abilities.length) ? (
+                    <details open>
+                      <summary style={{ ...muted, cursor: 'pointer' }}>Abilities</summary>
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', paddingTop: 6 }}>
+                        {abilities.map((a: string) => (<TokenChip key={a} label={a} type="ability" value={a} />))}
+                        {!abilities.length ? <span style={muted}>No matches</span> : null}
+                      </div>
+                    </details>
+                  ) : null}
+
+                  {(showAll || races.length) ? (
+                    <details open>
+                      <summary style={{ ...muted, cursor: 'pointer' }}>Races</summary>
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', paddingTop: 6 }}>
+                        {races.map((r: string) => (<TokenChip key={r} label={r} type="race" value={r} />))}
+                        {!races.length ? <span style={muted}>No matches</span> : null}
+                      </div>
+                    </details>
+                  ) : null}
+
+                  {(showAll || backgrounds.length) ? (
+                    <details open>
+                      <summary style={{ ...muted, cursor: 'pointer' }}>Backgrounds</summary>
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', paddingTop: 6 }}>
+                        {backgrounds.map((b: string) => (<TokenChip key={b} label={b} type="background" value={b} />))}
+                        {!backgrounds.length ? <span style={muted}>No matches</span> : null}
+                      </div>
+                    </details>
+                  ) : null}
+
+                  {(showAll || others.length) ? (
+                    <details>
+                      <summary style={{ ...muted, cursor: 'pointer' }}>Other</summary>
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', paddingTop: 6 }}>
+                        {others.map((t) => (<TokenChip key={t} label={t} type="text" value={t} />))}
+                        {!others.length ? <span style={muted}>No matches</span> : null}
+                      </div>
+                    </details>
+                  ) : null}
+                </div>
+              )
+            })()}
+
           </div>
 
           {/* Workspace */}
