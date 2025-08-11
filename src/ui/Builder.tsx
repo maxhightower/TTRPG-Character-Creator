@@ -1040,27 +1040,27 @@ function computeDerived(state: AppState) {
 function Labeled(props: { label: string; children: React.ReactNode }) {
   return (
     <div style={{ display: 'grid', gap: 6, alignContent: 'start', justifyItems: 'start' }}>
-      <div style={{ fontSize: 12, color: '#64748b', letterSpacing: 0.3, textTransform: 'uppercase' }}>{props.label}</div>
+      <div style={{ fontSize: 12, color: 'var(--muted-fg, #64748b)', letterSpacing: 0.3, textTransform: 'uppercase' }}>{props.label}</div>
       {props.children}
     </div>
   )
 }
 
 function Pill(props: { children: React.ReactNode }) {
-  return <span style={{ padding: '2px 8px', borderRadius: 999, background: '#f1f5f9', color: '#0f172a', fontSize: 12, whiteSpace: 'nowrap' }}>{props.children}</span>
+  return <span style={{ padding: '2px 8px', borderRadius: 999, background: 'var(--pill-bg, #f1f5f9)', color: 'var(--fg)', fontSize: 12, whiteSpace: 'nowrap' }}>{props.children}</span>
 }
 
 function Button(props: React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: 'default' | 'outline' | 'ghost'; size?: 'sm' | 'md' | 'icon' }) {
   const { variant = 'default', size = 'md', style, ...rest } = props
   const base: React.CSSProperties = {
     borderRadius: 8,
-    border: '1px solid #cbd5e1',
-    background: variant === 'default' ? '#0ea5e9' : 'white',
-    color: variant === 'default' ? 'white' : '#0f172a',
+    border: '1px solid var(--button-border)',
+    background: variant === 'default' ? 'var(--button-active-bg)' : 'var(--button-bg)',
+    color: variant === 'default' ? 'var(--button-active-fg)' : 'var(--button-fg)',
   cursor: 'pointer',
   whiteSpace: 'nowrap',
   }
-  if (variant === 'outline') { base.background = 'white' }
+  if (variant === 'outline') { base.background = 'var(--button-bg)' }
   if (variant === 'ghost') { base.background = 'transparent'; base.border = '1px solid transparent' }
   if (size === 'sm') { base.padding = '6px 10px'; base.fontSize = 12 }
   else if (size === 'icon') { base.padding = 6 }
@@ -1087,10 +1087,10 @@ function CardContent(props: { children: React.ReactNode }) {
 
 // ---------------- Styles ----------------
 
-const inp: React.CSSProperties = { width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #cbd5e1' }
-const badgeSecondary: React.CSSProperties = { padding: '2px 8px', borderRadius: 999, background: '#f1f5f9', border: '1px solid #e2e8f0', fontSize: 12 }
-const badgeOutline: React.CSSProperties = { padding: '2px 8px', borderRadius: 999, border: '1px solid #e2e8f0', fontSize: 12 }
-const card: React.CSSProperties = { border: '1px solid #e2e8f0', borderRadius: 12, background: 'white', boxShadow: '0 2px 8px rgba(15,23,42,0.05)' }
+const inp: React.CSSProperties = { width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--muted-border)', color: 'var(--fg)', background: 'var(--card-bg)' }
+const badgeSecondary: React.CSSProperties = { padding: '2px 8px', borderRadius: 999, background: 'var(--pill-bg, #f1f5f9)', border: '1px solid var(--muted-border)', fontSize: 12, color: 'var(--fg)' }
+const badgeOutline: React.CSSProperties = { padding: '2px 8px', borderRadius: 999, border: '1px solid var(--muted-border)', fontSize: 12, color: 'var(--fg)' }
+const card: React.CSSProperties = { border: '1px solid var(--muted-border)', borderRadius: 12, background: 'var(--card-bg)', boxShadow: '0 2px 8px rgba(15,23,42,0.05)' }
 
 // ---------------- App State ----------------
 
@@ -2006,7 +2006,7 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
                 <div style={{ fontSize: 12, color: '#64748b' }}>You have class choices to make.</div>
                 <div style={{ display: 'grid', gap: 8, marginTop: 8 }}>
                   {pendingSubclassChoices.map((c) => (
-                    <div key={c.klass.id} style={{ padding: 8, borderRadius: 10, border: '1px solid #e2e8f0', background: '#f8fafc', display: 'grid', gap: 8 }}>
+                    <div key={c.klass.id} style={{ padding: 8, borderRadius: 10, border: '1px solid var(--muted-border)', background: 'var(--card-bg)', display: 'grid', gap: 8 }}>
                       <div style={{ fontWeight: 600 }}>{c.klass.name}: Choose a Subclass</div>
                       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                         {(c.klass.subclasses || []).filter((s) => c.level >= s.unlockLevel).map((s) => (
@@ -2055,7 +2055,7 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
                     {/* ASI allocation */}
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 8 }}>
                       {(['str','dex','con','int','wis','cha'] as AbilityKey[]).map((k) => (
-                        <div key={k} style={{ padding: 8, borderRadius: 10, border: '1px solid #e2e8f0', background: '#f8fafc', display: 'grid', gap: 6 }}>
+                        <div key={k} style={{ padding: 8, borderRadius: 10, border: '1px solid var(--muted-border)', background: 'var(--card-bg)', display: 'grid', gap: 6 }}>
                           <div style={{ fontSize: 10, textTransform: 'uppercase', color: '#64748b' }}>{k}</div>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                             <Button size="icon" variant="outline" onClick={() => setAsiAlloc((prev) => ({ ...prev, [k]: Math.max(0, (prev[k] || 0) - 1) }))} disabled={!canDecrease(k)}>−</Button>
@@ -2183,7 +2183,7 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
                       const knownL1Count = known.filter((id) => level1.some((s) => s.id === id)).length
                       const prepL1Count = prepared.filter((id) => level1.some((s) => s.id === id)).length
                       return (
-                        <div key={kid} style={{ padding: 8, borderRadius: 12, border: '1px solid #e2e8f0', background: '#f8fafc', display: 'grid', gap: 8 }}>
+                        <div key={kid} style={{ padding: 8, borderRadius: 12, border: '1px solid var(--muted-border)', background: 'var(--card-bg)', display: 'grid', gap: 8 }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                             <div style={{ fontWeight: 600 }}>{c.klass.name}</div>
                             <Pill>Spell DC {dc}</Pill>
@@ -2359,7 +2359,7 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
                       padding: 8,
                       borderRadius: 10,
                       border: '1px solid #e2e8f0',
-                      background: '#f8fafc',
+                      background: 'var(--card-bg)',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'space-between',
@@ -2479,7 +2479,7 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
                 </div>
 
                 {/* Loadout column */}
-                <div style={{ display: 'grid', gap: 8, background: '#f8fafc', padding: 8, borderRadius: 10, border: '1px solid #e2e8f0' }}>
+                <div style={{ display: 'grid', gap: 8, background: 'var(--card-bg)', padding: 8, borderRadius: 10, border: '1px solid var(--muted-border)' }}>
                   <div style={{ fontSize: 12, color: '#64748b' }}>Loadout</div>
                   <div style={{ maxHeight: 360, overflowY: 'auto', paddingRight: 4 }}>
                     <div style={{ display: 'grid', gap: 6 }}>
@@ -2529,7 +2529,7 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
                 <div style={{ fontSize: 12, color: '#64748b' }}>Abilities & Saves</div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
           {(['str','dex','con','int','wis','cha'] as AbilityKey[]).map((k) => (
-                    <div key={k} style={{ padding: 8, borderRadius: 12, border: '1px solid #e2e8f0', background: '#f8fafc', display: 'grid', gap: 6 }}>
+                    <div key={k} style={{ padding: 8, borderRadius: 12, border: '1px solid var(--muted-border)', background: 'var(--card-bg)', display: 'grid', gap: 6 }}>
                       <div style={{ fontSize: 10, textTransform: 'uppercase', color: '#64748b' }}>{k}</div>
             <div style={{ fontWeight: 600 }}>{finalAbility(abilities, race, asiAlloc)[k]}</div>
             <div style={{ fontSize: 12, color: '#64748b' }}>mod {mod(finalAbility(abilities, race, asiAlloc)[k]) >= 0 ? '+' : ''}{mod(finalAbility(abilities, race, asiAlloc)[k])}</div>
@@ -2664,7 +2664,7 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
                       }
                     })
                     return cards.length ? cards.map((card) => (
-                      <div key={card.key} style={{ padding: 8, borderRadius: 12, border: '1px solid #e2e8f0', background: '#f8fafc' }}>
+                      <div key={card.key} style={{ padding: 8, borderRadius: 12, border: '1px solid var(--muted-border)', background: 'var(--card-bg)' }}>
                         <div style={{ fontWeight: 600 }}>{card.name} <span style={{ color: '#64748b', fontWeight: 400 }}>({card.source})</span></div>
                         <div style={{ color: '#64748b' }}>{card.text}</div>
                       </div>
@@ -2681,7 +2681,7 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
                 <div style={{ display: 'grid', gap: 8, fontSize: 14 }}>
                   {(race.traits || []).length ? (
                     (race.traits || []).map((t) => (
-                      <div key={t.id} style={{ padding: 8, borderRadius: 12, border: '1px solid #e2e8f0', background: '#f8fafc' }}>
+                      <div key={t.id} style={{ padding: 8, borderRadius: 12, border: '1px solid var(--muted-border)', background: 'var(--card-bg)' }}>
                         <div style={{ fontWeight: 600 }}>{t.name}</div>
                         <div style={{ color: '#64748b' }}>{t.text}</div>
                       </div>
@@ -2699,7 +2699,7 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
       {/* Passive Planner sync prompt (global overlay) */}
       {pendingPassivePlan ? (
         <div style={{ position: 'fixed', left: 12, right: 12, bottom: 12, display: 'flex', justifyContent: 'center', pointerEvents: 'none', zIndex: 50 }}>
-          <div style={{ pointerEvents: 'auto', maxWidth: 720, width: '100%', background: 'white', border: '1px solid #e2e8f0', borderRadius: 12, boxShadow: '0 6px 20px rgba(0,0,0,0.08)', padding: 12, display: 'grid', gap: 10 }}>
+          <div style={{ pointerEvents: 'auto', maxWidth: 720, width: '100%', background: 'var(--card-bg)', border: '1px solid var(--muted-border)', borderRadius: 12, boxShadow: '0 6px 20px rgba(0,0,0,0.18)', padding: 12, display: 'grid', gap: 10 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div style={{ fontWeight: 600 }}>Planner changes available</div>
               <Button size="sm" variant="outline" onClick={() => { setPendingPassivePlan(null) }}>Dismiss</Button>
@@ -2908,7 +2908,7 @@ function AbilityEditor(props: { abilities: Record<AbilityKey, number>; onChange:
             key={k}
             onDragOver={onAbilityDragOver}
             onDrop={(e) => onAbilityDrop(k, e)}
-            style={{ padding: 8, borderRadius: 12, border: '1px solid #e2e8f0', background: '#f8fafc', display: 'grid', gap: 6 }}
+            style={{ padding: 8, borderRadius: 12, border: '1px solid var(--muted-border)', background: 'var(--card-bg)', display: 'grid', gap: 6 }}
           >
             <div style={{ fontSize: 10, textTransform: 'uppercase', color: '#64748b' }}>{k}</div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -2946,7 +2946,7 @@ function finalAbility(abilities: Record<AbilityKey, number>, race: Race, asi?: R
 function ItemCard({ item, onAdd }: { item: Equipment; onAdd: () => void }) {
   const tags = (item as any).tags as string[] | undefined
   return (
-  <div style={{ padding: 10, borderRadius: 10, border: '1px solid #e2e8f0', background: 'white', display: 'grid', gap: 6, minHeight: 96 }}>
+  <div style={{ padding: 10, borderRadius: 10, border: '1px solid var(--muted-border)', background: 'var(--card-bg)', display: 'grid', gap: 6, minHeight: 96 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         {item.type === 'weapon' && <Sword size={16} />}
         {item.type === 'shield' && <Shield size={16} />}
@@ -2973,7 +2973,7 @@ function ItemCard({ item, onAdd }: { item: Equipment; onAdd: () => void }) {
 
 function LoadoutRow({ item, onRemove }: { item: Equipment; onRemove: () => void }) {
   return (
-    <div style={{ padding: 6, borderRadius: 10, border: '1px solid #e2e8f0', background: '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+  <div style={{ padding: 6, borderRadius: 10, border: '1px solid var(--muted-border)', background: 'var(--card-bg)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
         {item.type === 'weapon' && <Sword size={16} />}
         {item.type === 'shield' && <Shield size={16} />}
@@ -2990,7 +2990,7 @@ function LoadoutRow({ item, onRemove }: { item: Equipment; onRemove: () => void 
         </div>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-        {(SUBACTIONS_BY_ITEM[(item as any).id] || []).map((s) => <span key={s} style={{ padding: '1px 6px', borderRadius: 999, background: '#f1f5f9', border: '1px solid #e2e8f0', fontSize: 11 }}>{s}</span>)}
+  {(SUBACTIONS_BY_ITEM[(item as any).id] || []).map((s) => <span key={s} style={{ padding: '1px 6px', borderRadius: 999, background: 'var(--pill-bg)', border: '1px solid var(--muted-border)', fontSize: 11 }}>{s}</span>)}
         <Button size="sm" variant="ghost" onClick={onRemove} style={{ padding: '4px 6px' }}>Remove</Button>
       </div>
     </div>
@@ -3065,7 +3065,7 @@ function ClassManager(props: { classes: Array<{ klass: Klass; level: number; sub
             Add Class
           </Button>
           {addOpen ? (
-            <div style={{ position: 'absolute', right: 0, top: '100%', marginTop: 6, background: 'white', border: '1px solid #e2e8f0', borderRadius: 8, boxShadow: '0 8px 16px rgba(15,23,42,0.12)', zIndex: 20, minWidth: 220 }}>
+            <div style={{ position: 'absolute', right: 0, top: '100%', marginTop: 6, background: 'var(--card-bg)', border: '1px solid var(--muted-border)', borderRadius: 8, boxShadow: '0 8px 16px rgba(15,23,42,0.25)', zIndex: 20, minWidth: 220 }}>
               <div style={{ maxHeight: 240, overflowY: 'auto', display: 'grid' }}>
                 {available.map((k: Klass) => (
                   <Button key={k.id} size="sm" variant="ghost" style={{ width: '100%', justifyContent: 'flex-start' }} onClick={() => addClass(k)}>
@@ -3079,7 +3079,7 @@ function ClassManager(props: { classes: Array<{ klass: Klass; level: number; sub
       </div>
       <div style={{ display: 'grid', gap: 8, gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))' }}>
         {props.classes.map((c: { klass: Klass; level: number; subclass?: Subclass }, idx: number) => (
-          <div key={c.klass.id} style={{ padding: 8, borderRadius: 12, border: '1px solid #e2e8f0', background: '#f8fafc', display: 'grid', gap: 6 }}>
+          <div key={c.klass.id} style={{ padding: 8, borderRadius: 12, border: '1px solid var(--muted-border)', background: 'var(--card-bg)', display: 'grid', gap: 6 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <div style={{ fontWeight: 600 }}>{c.klass.name}</div>
@@ -3118,7 +3118,7 @@ function ClassManager(props: { classes: Array<{ klass: Klass; level: number; sub
 
         {/* Placeholder for empty state */}
         {props.classes.length === 0 && (
-          <div style={{ gridColumn: '1 / -1', padding: 8, borderRadius: 12, border: '1px solid #e2e8f0', background: '#f8fafc', textAlign: 'center', color: '#94a3b8' }}>
+          <div style={{ gridColumn: '1 / -1', padding: 8, borderRadius: 12, border: '1px solid var(--muted-border)', background: 'var(--card-bg)', textAlign: 'center', color: 'var(--muted-fg)' }}>
             No classes added yet. Use "Add Class" to start building your character.
           </div>
         )}

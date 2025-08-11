@@ -1,13 +1,67 @@
-:root { color-scheme: light; }
+/* Theme variables */
+:root {
+	color-scheme: light;
+	/* base */
+	--bg: #f8fafc; /* slate-50 */
+	--fg: #0f172a; /* slate-900 */
+		--card-bg: #f1f5f9; /* slate-100 for cards instead of white */
+	--muted-border: #cbd5e1; /* slate-300 */
+	/* header */
+	--header-bg: rgba(248, 250, 252, 0.8);
+	--header-border: #e2e8f0;
+	/* buttons */
+	--button-bg: #ffffff;
+	--button-fg: var(--fg);
+	--button-border: #cbd5e1; /* slate-300 */
+	--button-active-bg: #0ea5e9; /* sky-500 */
+	--button-active-fg: #ffffff;
+		/* misc */
+	--muted-fg: #475569; /* slate-600 for better readability */
+	--pill-bg: #eef2f7; /* slightly brighter chip */
+	--focus-ring: #38bdf8; /* sky-400 */
+}
+
+:root[data-theme='dark'] {
+	color-scheme: dark;
+	/* base */
+	--bg: #0b1220; /* deep slate */
+	--fg: #e5e7eb; /* gray-200 */
+	--card-bg: #0f172a; /* slate-900 */
+	--muted-border: #475569; /* slate-600 for clearer edges */
+	/* header */
+	--header-bg: rgba(15, 23, 42, 0.85); /* slate-900 w/ alpha */
+	--header-border: #1e293b; /* slate-800 */
+	/* buttons */
+	--button-bg: #111827; /* gray-900 */
+	--button-fg: var(--fg);
+	--button-border: #475569; /* slate-600 */
+	--button-active-bg: #0284c7; /* sky-600 */
+	--button-active-fg: #ffffff;
+		/* misc */
+	--muted-fg: #cbd5e1; /* slate-300 for much better readability */
+	--pill-bg: #111827; /* darker chip for contrast against card */
+	--focus-ring: #0ea5e9; /* sky-500 */
+}
+
 html, body, #root { height: 100%; }
 body {
 	margin: 0;
-	background: #f8fafc;
+	background: var(--bg);
 	font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
-	color: #0f172a;
+	color: var(--fg);
 	line-height: 1.45;
 	-webkit-font-smoothing: antialiased;
 	-moz-osx-font-smoothing: grayscale;
 }
 * { box-sizing: border-box; }
-section { background: white; }
+section { background: var(--card-bg); }
+
+/* Better visibility: focus rings and subtle hover cue for all buttons/inputs */
+:where(button,[role="button"],input,select,textarea):focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: 2px;
+}
+button:hover,[role="button"]:hover { filter: brightness(1.05); }
+@media (prefers-reduced-motion: reduce) {
+	button:hover,[role="button"]:hover { filter: none; }
+}
