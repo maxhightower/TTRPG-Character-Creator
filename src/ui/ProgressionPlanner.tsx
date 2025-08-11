@@ -10,8 +10,7 @@ const badge: React.CSSProperties = { padding: '2px 8px', borderRadius: 999, bord
 const card: React.CSSProperties = { border: '1px solid #e2e8f0', borderRadius: 12, background: 'white' }
 const btn: React.CSSProperties = { padding: '8px 10px', borderRadius: 8, border: '1px solid #cbd5e1', background: 'white', cursor: 'pointer' }
 const muted: React.CSSProperties = { color: '#64748b', fontSize: 12 }
-const delBtn: React.CSSProperties = { position: 'absolute', top: 4, right: 4, width: 24, height: 24, borderRadius: 999, border: '1px solid #e2e8f0', background: '#fff', cursor: 'pointer', color: '#334155', lineHeight: '22px', textAlign: 'center', zIndex: 10, boxShadow: '0 1px 2px rgba(0,0,0,0.06)' }
-const addBtnRight: React.CSSProperties = { position: 'absolute', right: -10, top: '50%', transform: 'translateY(-50%)', width: 24, height: 24, borderRadius: 999, border: '1px solid #e2e8f0', background: '#fff', cursor: 'pointer', color: '#0f172a', lineHeight: '22px', textAlign: 'center', zIndex: 9, boxShadow: '0 1px 2px rgba(0,0,0,0.06)' }
+// removed unused delBtn/addBtnRight styles
 
 // Domain data small set
 const CLASSES = [
@@ -277,6 +276,133 @@ function ProgressStepNode({ id, data }: { id: string; data: ProgressStepData }) 
 
   // DnD typed holes state
   const [over, setOver] = React.useState<string | null>(null)
+  const [overAny, setOverAny] = React.useState<boolean>(false)
+
+  // Drag-to-fill state for class levels
+  const fillRef = React.useRef<{
+    active: boolean
+    startClientX: number
+    baseX: number
+    baseY: number
+    baseLevel: number
+    className?: string
+    lastId: string
+    added: number
+    deleted: number
+  }>({ active: false, startClientX: 0, baseX: 0, baseY: 0, baseLevel: 1, className: undefined, lastId: id, added: 0, deleted: 0 })
+
+  const stopFillListeners = React.useCallback(() => {
+    window.removeEventListener('pointermove', onFillMove as any)
+    window.removeEventListener('pointerup', onFillEnd as any)
+  }, [])
+
+  const onFillEnd = React.useCallback((e?: PointerEvent) => {
+    // finalize
+    fillRef.current.active = false
+    stopFillListeners()
+  }, [stopFillListeners])
+
+  const onFillMove = React.useCallback((e: PointerEvent) => {
+    if (!fillRef.current.active) return
+    const dxRaw = e.clientX - fillRef.current.startClientX
+    const stepPx = 120
+    if (dxRaw >= 0) {
+      // Adding to the right
+      const dx = Math.max(0, dxRaw)
+      let want = Math.floor(dx / stepPx)
+      if (want <= fillRef.current.added) return
+      // Cap by remaining levels up to 20
+      const remaining = Math.max(0, 20 - fillRef.current.baseLevel)
+      want = Math.min(want, remaining)
+      let prevId = fillRef.current.lastId
+      const nodesList = (getNodes?.() as any[]) || []
+      const edgesList = (getEdges?.() as any[]) || []
+      const toAddNodes: any[] = []
+      const toAddEdges: any[] = []
+      for (let i = fillRef.current.added + 1; i <= want; i += 1) {
+        const level = fillRef.current.baseLevel + i
+        const nid = `step-${crypto.randomUUID().slice(0, 6)}`
+        toAddNodes.push({
+          id: nid,
+          type: 'progressStep',
+          position: { x: fillRef.current.baseX + i * 320, y: fillRef.current.baseY },
+          data: { level, type: 'class', className: fillRef.current.className, collapsed: true } as any,
+        })
+        toAddEdges.push({ id: `e-${crypto.randomUUID().slice(0, 6)}`, source: prevId, target: nid })
+        prevId = nid
+      }
+      fillRef.current.added = want
+      fillRef.current.lastId = prevId
+      if (toAddNodes.length) rfSetNodes?.([...(nodesList as any), ...toAddNodes])
+      if (toAddEdges.length) rfSetEdges?.([...(edgesList as any), ...toAddEdges])
+    } else {
+      // Deleting to the left
+      const dx = Math.abs(dxRaw)
+      let wantDel = Math.floor(dx / stepPx)
+      if (wantDel <= fillRef.current.deleted) return
+      // Determine current forward chain of same-class class nodes after the base
+      const nodesList = (getNodes?.() as any[]) || []
+      const edgesList = (getEdges?.() as any[]) || []
+      const idToNode = new Map(nodesList.map((n: any) => [n.id, n] as const))
+      // Build forward sequence from base id following lowest-y outgoing targets
+      const forward: any[] = []
+      let cur = id
+      let guard = 0
+      while (cur && guard < 256) {
+        guard += 1
+        const outs = (edgesList as any[]).filter((e: any) => e.source === cur)
+        if (!outs.length) break
+        const nextId = outs
+          .map((e: any) => ({ e, n: idToNode.get(e.target) }))
+          .filter((x: any) => !!x.n)
+          .sort((a: any, b: any) => (a.n!.position?.y || 0) - (b.n!.position?.y || 0))[0]?.n?.id
+        if (!nextId) break
+        const nn = idToNode.get(nextId)
+        if (!nn) break
+        forward.push(nn)
+        cur = nextId
+      }
+      // Filter only same-class class nodes
+      const className = fillRef.current.className
+      const sameClassForward = forward.filter((n) => n.type === 'progressStep' && n.data?.type === 'class' && n.data?.className === className)
+      const deletable = sameClassForward.length
+      if (deletable <= 0) return
+      wantDel = Math.min(wantDel, deletable)
+      const toRemoveCount = wantDel - fillRef.current.deleted
+      if (toRemoveCount <= 0) return
+      const toRemove = sameClassForward.slice(-toRemoveCount).map((n) => n.id)
+      const remainingNodes = nodesList.filter((n: any) => !toRemove.includes(n.id))
+      const remainingEdges = edgesList.filter((e: any) => !toRemove.includes(e.source) && !toRemove.includes(e.target))
+      fillRef.current.deleted = wantDel
+      // Update lastId if we deleted nodes that were after lastId
+      if (toRemove.includes(fillRef.current.lastId)) {
+        // Reset lastId to the last existing in chain or base id
+        const stillThere = sameClassForward.filter((n) => !toRemove.includes(n.id)).pop()?.id || id
+        fillRef.current.lastId = stillThere
+      }
+      rfSetNodes?.(remainingNodes as any)
+      rfSetEdges?.(remainingEdges as any)
+    }
+  }, [getNodes, getEdges, rfSetNodes, rfSetEdges])
+
+  const onFillStart = React.useCallback((e: React.PointerEvent) => {
+    if (data.type !== 'class' || !data.className) return
+    e.preventDefault(); e.stopPropagation()
+    const n = getNode?.(id) as any
+    fillRef.current = {
+      active: true,
+      startClientX: e.clientX,
+      baseX: (n?.position?.x ?? 0),
+      baseY: (n?.position?.y ?? 0),
+      baseLevel: Number(data.level) || 1,
+      className: data.className,
+      lastId: id,
+  added: 0,
+  deleted: 0,
+    }
+    window.addEventListener('pointermove', onFillMove as any)
+    window.addEventListener('pointerup', onFillEnd as any, { once: true })
+  }, [data.type, data.className, data.level, id, getNode, onFillMove, onFillEnd])
 
   // Tags and Checklist removed per request
 
@@ -350,7 +476,46 @@ function ProgressStepNode({ id, data }: { id: string; data: ProgressStepData }) 
 
   const activeGlow = data?._active ? '0 0 0 2px rgba(14,165,233,0.35), 0 6px 20px rgba(14,165,233,0.25)' : '0 1px 2px rgba(0,0,0,0.06)'
   return (
-    <div style={{ position: 'relative', boxShadow: activeGlow }}>
+    <div
+      style={{ position: 'relative', boxShadow: activeGlow, outline: overAny ? '2px dashed #0ea5e9' : undefined, outlineOffset: -2 }}
+      onDragOver={(e) => {
+        // Allow dropping of tokens anywhere on the node; apply based on node type
+        if (Array.from(e.dataTransfer.types || []).includes(DND_TOKEN_MIME)) {
+          e.preventDefault()
+          setOverAny(true)
+        }
+      }}
+      onDragLeave={() => setOverAny(false)}
+      onDrop={(e) => {
+        setOverAny(false)
+        const raw = e.dataTransfer.getData(DND_TOKEN_MIME)
+        if (!raw) return
+        try {
+          const tok = JSON.parse(raw)
+          // Apply class token to class steps
+          if (data.type === 'class' && tok.type === 'class' && (CLASSES as readonly string[]).includes(tok.value)) {
+            data.onChange?.({ className: tok.value })
+            e.stopPropagation()
+            return
+          }
+          // Apply ability tokens to ASI steps
+          if (data.type === 'asi' && tok.type === 'ability' && (ABILITIES as readonly string[]).includes(tok.value)) {
+            const a1 = (data.ability1 as any) || null
+            const a2 = (data.ability2 as any) || null
+            if (!a1) {
+              data.onChange?.({ ability1: tok.value as any, asi: buildAsiString(tok.value, a2 as any) })
+            } else if (!a2) {
+              data.onChange?.({ ability2: tok.value as any, asi: buildAsiString(a1 as any, tok.value) })
+            } else {
+              // If both filled, replace the second for convenience
+              data.onChange?.({ ability2: tok.value as any, asi: buildAsiString(a1 as any, tok.value) })
+            }
+            e.stopPropagation()
+            return
+          }
+        } catch {}
+      }}
+    >
       {/* Kebab actions */}
       <details className="nodrag nopan" style={{ position: 'absolute', top: 4, right: 4, zIndex: 10 }}>
         <summary
@@ -376,6 +541,15 @@ function ProgressStepNode({ id, data }: { id: string; data: ProgressStepData }) 
         </div>
       </details>
       <Handle type="target" position={Position.Left} />
+      {/* Drag-to-fill handle (top-right corner) for class steps */}
+    {data?.type === 'class' ? (
+        <div
+          className="nodrag nopan"
+          onPointerDown={onFillStart}
+          title={data.className ? `Drag to extend ${data.className} levels` : 'Set class to enable quick-fill'}
+      style={{ position: 'absolute', bottom: -8, right: -8, width: 16, height: 16, borderRadius: 4, border: '1px solid #e2e8f0', background: '#f8fafc', color: '#0f172a', cursor: data.className ? 'ew-resize' : 'not-allowed', display: 'grid', placeItems: 'center', fontSize: 10, boxShadow: '0 1px 2px rgba(0,0,0,0.06)', zIndex: 10 }}
+        >»</div>
+      ) : null}
   {/* Remove top target; single connection lives at the bottom */}
       {/* For bundle and ASI steps, expose a top source handle so they can attach upward into the class bottom handle */}
   {data?.type === 'bundle' || data?.type === 'asi' || data?.type === 'subclass' ? (
@@ -711,7 +885,7 @@ function ProgressStepNode({ id, data }: { id: string; data: ProgressStepData }) 
         </div>
       ) : null}
   <Handle type="source" position={Position.Right} />
-    </div>
+  </div>
   )
 }
 
@@ -731,10 +905,43 @@ function RootNode({ id, data }: { id: string; data: RootNodeData }) {
 
   const toggleCollapsed = () => data.onChange?.({ collapsed: !data.collapsed })
   const [over, setOver] = useState<string | null>(null)
+  const [overAny, setOverAny] = useState<boolean>(false)
 
   const activeGlow = data?._active ? '0 0 0 2px rgba(14,165,233,0.35), 0 6px 20px rgba(14,165,233,0.25)' : '0 1px 2px rgba(0,0,0,0.06)'
   return (
-    <div style={{ position: 'relative', boxShadow: activeGlow }}>
+    <div
+      style={{ position: 'relative', boxShadow: activeGlow, outline: overAny ? '2px dashed #0ea5e9' : undefined, outlineOffset: -2 }}
+      onDragOver={(e) => {
+        if (Array.from(e.dataTransfer.types || []).includes(DND_TOKEN_MIME)) {
+          e.preventDefault()
+          setOverAny(true)
+        }
+      }}
+      onDragLeave={() => setOverAny(false)}
+      onDrop={(e) => {
+        setOverAny(false)
+        const raw = e.dataTransfer.getData(DND_TOKEN_MIME)
+        if (!raw) return
+        try {
+          const tok = JSON.parse(raw)
+          if (tok.type === 'race' && (RACE_NAMES as readonly string[]).includes(tok.value)) {
+            data.onChange?.({ race: tok.value })
+            e.stopPropagation()
+            return
+          }
+          if (tok.type === 'background' && (BACKGROUNDS as readonly string[]).includes(tok.value)) {
+            data.onChange?.({ background: tok.value })
+            e.stopPropagation()
+            return
+          }
+          if ((tok.type === 'text' || tok.type === 'other') && typeof tok.value === 'string') {
+            data.onChange?.({ other: tok.value })
+            e.stopPropagation()
+            return
+          }
+        } catch {}
+      }}
+    >
       {/* Kebab actions */}
       <details className="nodrag nopan" style={{ position: 'absolute', top: 4, right: 4, zIndex: 10 }}>
         <summary
@@ -867,7 +1074,7 @@ function RootNode({ id, data }: { id: string; data: RootNodeData }) {
         </div>
       ) : null}
       <Handle type="source" position={Position.Right} />
-    </div>
+  </div>
   )
 }
 
@@ -1482,10 +1689,28 @@ export function ProgressionPlanner(props: { character?: BuilderState; derived?: 
       const key = e.key.toLowerCase()
       if (ctrl && key === 'z' && !e.shiftKey) { e.preventDefault(); undo() }
       else if ((ctrl && key === 'y') || (ctrl && key === 'z' && e.shiftKey)) { e.preventDefault(); redo() }
+      else if (e.shiftKey && e.key === 'Delete') {
+        // Only handle Shift+Delete when not typing in an input/textarea/contenteditable
+        const target = e.target as HTMLElement | null
+        const isEditable = !!(target && (
+          target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          (target as HTMLElement).isContentEditable
+        ))
+        if (isEditable) return
+        e.preventDefault()
+        // Collect selected nodes and edges
+        const selectedNodeIds = (nodes as any[]).filter((n: any) => n?.selected).map((n: any) => n.id)
+        const selectedEdgeIds = (edges as any[]).filter((ed: any) => ed?.selected).map((ed: any) => ed.id)
+        if (selectedNodeIds.length === 0 && selectedEdgeIds.length === 0) return
+        snapshot()
+        setNodes((nds: any[]) => nds.filter((n: any) => !selectedNodeIds.includes(n.id)))
+        setEdges((eds: any[]) => eds.filter((ed: any) => !selectedEdgeIds.includes(ed.id) && !selectedNodeIds.includes(ed.source) && !selectedNodeIds.includes(ed.target)))
+      }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [undo, redo])
+  }, [undo, redo, nodes, edges, snapshot, setNodes, setEdges])
 
   const onNodesChange = useCallback((changes: any) => { snapshot(); baseOnNodesChange(changes) }, [snapshot, baseOnNodesChange])
   const onEdgesChange = useCallback((changes: any) => { snapshot(); baseOnEdgesChange(changes) }, [snapshot, baseOnEdgesChange])
@@ -1721,6 +1946,22 @@ export function ProgressionPlanner(props: { character?: BuilderState; derived?: 
     setNodes((nds: any[]) => nds.map((n) => ({ ...n, data: { ...n.data, collapsed: false } })))
   }, [snapshot, setNodes])
 
+  // Reset graph for this character: clears nodes/edges and related storage keys
+  const resetGraph = useCallback(() => {
+    const ok = window.confirm('Reset planner? This will clear all nodes and edges for this character. This cannot be undone except via Ctrl+Z in this session.')
+    if (!ok) return
+    snapshot()
+    setNodes([] as any)
+    setEdges([])
+    setActiveRootId(undefined)
+    try {
+      localStorage.removeItem(storageKey)
+      localStorage.removeItem(activeKey)
+      localStorage.removeItem(activePlanKey)
+    } catch {}
+    applyActiveHighlight(undefined)
+  }, [snapshot, setNodes, setEdges, storageKey, activeKey, activePlanKey, applyActiveHighlight])
+
   
 
   // Clone a branch starting from a root node
@@ -1891,6 +2132,40 @@ export function ProgressionPlanner(props: { character?: BuilderState; derived?: 
   return (
     <div className="w-full" style={{ display: 'grid', gridTemplateColumns: '1fr 360px', gap: 16, height: 'calc(100vh - 100px)' }}>
   <div style={{ height: '100%', border: '1px solid #e2e8f0', borderRadius: 12, overflow: 'hidden', background: 'white', position: 'relative' }}>
+        {/* Graph toolbar (top-right) */}
+        <div style={{ position: 'absolute', top: 8, right: 8, display: 'flex', gap: 6, zIndex: 20 }}>
+          <button onClick={undo} style={{ ...btn, padding: 6, width: 32, height: 32 }} title="Undo">↶</button>
+          <button onClick={redo} style={{ ...btn, padding: 6, width: 32, height: 32 }} title="Redo">↷</button>
+          <button onClick={expandAll} style={btn} title="Expand all nodes">Expand</button>
+          <button onClick={collapseAll} style={btn} title="Collapse all nodes">Collapse</button>
+          <button onClick={autoArrange} style={btn} title="Auto-arrange nodes">Arrange</button>
+          <button
+            onClick={() => {
+              const seeded = seedFromBuilder(props.character, props.derived)
+              if (!seeded) return
+              snapshot()
+              setNodes((seeded.nodes as any[]).map((n) => {
+                const d: any = { ...n.data, onChange: (p: any) => updateNodeData(n.id, p), onDelete: (nid: string) => removeNode(nid) }
+                if (n.type === 'root') {
+                  d.onClone = () => cloneBranch(n.id)
+                  d.onApply = () => { const plan: any = buildPlanFromRoot(seeded.nodes as any, seeded.edges as any, n.id); if (plan && props.onApplyPlan) props.onApplyPlan(plan) }
+                }
+                if (n.type === 'progressStep') {
+                  d.onApply = () => { const plan: any = buildPlanFromStart(seeded.nodes as any, seeded.edges as any, n.id); if (plan && props.onApplyPlan) props.onApplyPlan(plan) }
+                }
+                d.onAddChild = (k?: StepType) => addChild(n.id, k)
+                return { ...n, data: d }
+              }))
+              setEdges(seeded.edges as any)
+              const firstRoot = (seeded.nodes as any[]).find((n) => n.type === 'root')?.id
+              if (firstRoot) { setActiveRootId(firstRoot); localStorage.setItem(activeKey, firstRoot); applyActiveHighlight(firstRoot) }
+              setTimeout(() => { try { (autoArrange as any)() } catch {} }, 0)
+            }}
+            style={btn}
+            title="Reseed from Builder"
+          >Reseed</button>
+          <button onClick={resetGraph} style={{ ...btn, borderColor: '#ef4444', color: '#b91c1c' }} title="Reset (clear all nodes and edges)">Reset</button>
+        </div>
   <style>{`.react-flow__edge.edge-active path { stroke: #0ea5e9 !important; stroke-width: 2.5px; }`}</style>
         {(() => {
           const idToActive = new Map((nodes as any[]).map((n: any) => [n.id, !!n.data?._active]))
@@ -1944,25 +2219,6 @@ export function ProgressionPlanner(props: { character?: BuilderState; derived?: 
       </div>
 
   <div style={{ display: 'grid', gap: 12, overflowY: 'auto', overflowX: 'hidden', paddingRight: 12, minWidth: 0 }}>
-        {/* History */}
-        <section style={card}>
-          <div style={{ padding: 12, borderBottom: '1px solid #e2e8f0', fontWeight: 600, display: 'flex', justifyContent: 'space-between' }}>
-            <span>History</span>
-            {props.character ? (
-              <span style={{ fontSize: 12, color: '#64748b' }}>
-                {props.character.name} • Lv {props.derived?.totalLevel ?? props.character.classes.reduce((s, c) => s + (c.level || 0), 0)}
-              </span>
-            ) : null}
-          </div>
-          <div style={{ padding: 12, display: 'flex', gap: 8, flexWrap: 'wrap', paddingRight: 16 }}>
-            <button onClick={undo} style={btn}>↶ Undo</button>
-            <button onClick={redo} style={btn}>↷ Redo</button>
-            <button onClick={autoArrange} style={btn} title="Auto-arrange nodes">Auto Arrange</button>
-            <button onClick={expandAll} style={btn} title="Expand all nodes">Expand All</button>
-            <button onClick={collapseAll} style={btn} title="Collapse all nodes">Collapse All</button>
-  <button onClick={() => { const seeded = seedFromBuilder(props.character, props.derived); if (!seeded) return; snapshot(); setNodes((seeded.nodes as any[]).map((n) => { const d: any = { ...n.data, onChange: (p: any) => updateNodeData(n.id, p), onDelete: (nid: string) => removeNode(nid) }; if (n.type === 'root') { d.onClone = () => cloneBranch(n.id); d.onApply = () => { const plan: any = buildPlanFromRoot(seeded.nodes as any, seeded.edges as any, n.id); if (plan && props.onApplyPlan) props.onApplyPlan(plan) } } if (n.type === 'progressStep') { d.onApply = () => { const plan: any = buildPlanFromStart(seeded.nodes as any, seeded.edges as any, n.id); if (plan && props.onApplyPlan) props.onApplyPlan(plan) } } d.onAddChild = (k?: StepType) => addChild(n.id, k); return { ...n, data: d } })); setEdges(seeded.edges as any); const firstRoot = (seeded.nodes as any[]).find((n) => n.type === 'root')?.id; if (firstRoot) { setActiveRootId(firstRoot); localStorage.setItem(activeKey, firstRoot); applyActiveHighlight(firstRoot) } setTimeout(() => { try { (autoArrange as any)() } catch {} }, 0) }} style={btn} title="Regenerate using current Builder">Reseed from Builder</button>
-          </div>
-        </section>
 
         {/* Branch actions */}
         <section style={card}>
@@ -2002,22 +2258,29 @@ export function ProgressionPlanner(props: { character?: BuilderState; derived?: 
           <div style={{ padding: '0 12px 12px', fontSize: 12, color: '#64748b' }}>Use Root to set Race and Background, then connect Steps to build branches. Clone a Root to fork a new branch with the same history.</div>
         </section>
 
-        {/* Scratch-like Builder */}
+        {/* Quick Plan Builder */}
         <section style={card}>
-          <div style={{ padding: 12, borderBottom: '1px solid #e2e8f0', fontWeight: 600 }}>Scratch Blocks (beta)</div>
+          <div style={{ padding: 12, borderBottom: '1px solid #e2e8f0', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+            <span>Quick Plan Builder</span>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button onClick={generateFromScratch} style={btn} title="Create a new branch from the blocks below">Create Branch</button>
+              <button onClick={() => setScratch([])} style={btn} title="Clear all blocks">Clear</button>
+            </div>
+          </div>
 
           {/* Palette */}
           <div style={{ padding: 12, display: 'grid', gap: 12 }}>
+            {/* Quick add buttons */}
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-              <BlockChip label="Class Block" color={blockColors.class} draggableData={{ kind: 'class' }} />
-              <BlockChip label="Feat Block" color={blockColors.feat} draggableData={{ kind: 'feat' }} />
-              <BlockChip label="ASI Block" color={blockColors.asi} draggableData={{ kind: 'asi' }} />
-              <BlockChip label="Note Block" color={blockColors.note} draggableData={{ kind: 'note' }} />
-              <span style={{ fontSize: 12, color: '#64748b', alignSelf: 'center' }}>or click:</span>
               <button onClick={() => addScratchBlock('class')} style={btn}>+ Class</button>
               <button onClick={() => addScratchBlock('feat')} style={btn}>+ Feat</button>
               <button onClick={() => addScratchBlock('asi')} style={btn}>+ ASI</button>
               <button onClick={() => addScratchBlock('note')} style={btn}>+ Note</button>
+              <span style={{ fontSize: 12, color: '#64748b' }}>or drag chips:</span>
+              <BlockChip label="Class" color={blockColors.class} draggableData={{ kind: 'class' }} />
+              <BlockChip label="Feat" color={blockColors.feat} draggableData={{ kind: 'feat' }} />
+              <BlockChip label="ASI" color={blockColors.asi} draggableData={{ kind: 'asi' }} />
+              <BlockChip label="Note" color={blockColors.note} draggableData={{ kind: 'note' }} />
             </div>
             {/* Token filter */}
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -2126,9 +2389,8 @@ export function ProgressionPlanner(props: { character?: BuilderState; derived?: 
             ))}
           </div>
 
-          <div style={{ padding: 12, display: 'flex', gap: 8 }}>
-            <button onClick={generateFromScratch} style={btn}>Generate Branch from Blocks</button>
-            {scratch.length ? <span style={{ alignSelf: 'center', fontSize: 12, color: '#64748b' }}>{scratch.length} block(s)</span> : null}
+          <div style={{ padding: '0 12px 12px', display: 'flex', gap: 8, alignItems: 'center' }}>
+            {scratch.length ? <span style={{ fontSize: 12, color: '#64748b' }}>{scratch.length} block(s)</span> : <span style={{ fontSize: 12, color: '#64748b' }}>No blocks yet</span>}
           </div>
         </section>
 

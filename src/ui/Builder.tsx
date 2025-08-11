@@ -1171,6 +1171,8 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
   // Persistence (autosave/restore)
   const BUILDER_STORAGE_KEY = 'characterBuilder.v1'
   const restoredRef = useRef(false)
+  // Import: file input ref
+  const importInputRef = useRef<HTMLInputElement | null>(null)
 
   // Passive Planner import prompt state
   const [pendingPassivePlan, setPendingPassivePlan] = useState<null | { plan: any; diff: Array<{ key: string; label: string; before?: string; after?: string }>; mapping: any; ts: number }>(null)
@@ -1443,6 +1445,192 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
     catalogFiltersOpen,
   ])
 
+  // -------- Export / Import helpers --------
+  function buildExportPayload() {
+    return {
+      $schema: 'ttrpg-builder.v1',
+      version: 1,
+      name,
+      mode,
+      raceId: race?.id,
+      backgroundId: background?.id || null,
+      classes: classes.map((c) => ({ klassId: c.klass.id, level: c.level, subclassId: c.subclass?.id || null })),
+      abilities,
+      loadoutIds: loadout.map((i: any) => i.id),
+      // Skills & choices
+      skillProf,
+      skillSources,
+      classSkillPicks,
+      bgReplPicks,
+      raceReplPicks,
+      classFeatureChoices,
+      // Spells
+      knownSpells,
+      preparedSpells,
+      // ASI/Feats
+      asiAlloc,
+      selectedFeats,
+      featChoices,
+      // Minor UI prefs that are useful if sharing
+      skillTab,
+      skillLayout,
+      skillSort,
+      _exportedAt: new Date().toISOString(),
+    }
+  }
+
+  function exportToFile() {
+    try {
+      const payload = buildExportPayload()
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      const safe = (name || 'character').replace(/[^a-z0-9\-_. ]/gi, '_')
+      a.href = url
+      a.download = `${safe}.json`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+    } catch (e: any) {
+      try { console.error(e) } catch {}
+      window.alert('Failed to export JSON.')
+    }
+  }
+
+  function importFromObject(obj: any) {
+    if (!obj || typeof obj !== 'object') throw new Error('Invalid JSON object')
+    // Support both our export format and a minimal schema
+    const get = (k: string, def?: any) => (obj as any)[k] !== undefined ? (obj as any)[k] : def
+    // Snapshot for undo
+    snapshot()
+    try {
+      // Mode & name
+      if (typeof get('mode') === 'string') setMode(get('mode') === 'guided' ? 'guided' : 'power')
+      if (typeof get('name') === 'string') setName(get('name'))
+
+      // Race / Background (accept id or name fields)
+      const raceId: string | undefined = get('raceId') || undefined
+      const raceName: string | undefined = get('raceName') || get('race') || undefined
+      if (raceId || raceName) {
+        const r = raceId ? RACES.find((x) => x.id === raceId) : RACES.find((x) => x.name.toLowerCase() === String(raceName).toLowerCase())
+        if (r) setRace(r)
+      }
+      const bgId: string | null | undefined = get('backgroundId', null)
+      const bgName: string | undefined = get('backgroundName') || get('background') || undefined
+      if (bgId !== undefined || bgName) {
+        const bg = bgId ? BACKGROUNDS.find((b) => b.id === bgId) : (bgName ? BACKGROUNDS.find((b) => b.name.toLowerCase() === String(bgName).toLowerCase()) : undefined)
+        setBackground(bg)
+      }
+
+      // Classes: accept our exported shape or alternate with names
+      const impClasses: any[] = Array.isArray(get('classes')) ? get('classes') : []
+      if (impClasses.length) {
+        const next: Array<{ klass: Klass; level: number; subclass?: Subclass }> = []
+        ;(impClasses as any[]).forEach((c) => {
+          const klassId: string | undefined = c.klassId || c.classId || undefined
+          const klassName: string | undefined = c.klassName || c.className || c.klass || undefined
+          const k = klassId ? CLASSES.find((x) => x.id === klassId) : (klassName ? CLASSES.find((x) => x.name.toLowerCase() === String(klassName).toLowerCase()) : undefined)
+          if (!k) return
+          const level = Math.max(1, Math.min(20, Number(c.level) || 1))
+          let sc: Subclass | undefined
+          const subclassId: string | undefined = c.subclassId
+          const subclassName: string | undefined = c.subclassName || c.subclass
+          if (k.subclasses && (subclassId || subclassName)) {
+            sc = subclassId ? k.subclasses.find((s) => s.id === subclassId) : k.subclasses.find((s) => s.name.toLowerCase() === String(subclassName).toLowerCase())
+          }
+          next.push({ klass: k, level, subclass: sc })
+        })
+        if (next.length) setClasses(next)
+      }
+
+      // Abilities
+      const impAbilities = get('abilities')
+      if (impAbilities && typeof impAbilities === 'object') setAbilities(impAbilities)
+
+      // Loadout: accept ids or names
+      const loadoutIds: string[] | undefined = get('loadoutIds')
+      const loadoutNames: string[] | undefined = get('loadoutNames') || get('loadout')
+      if (Array.isArray(loadoutIds) || Array.isArray(loadoutNames)) {
+        const items: Equipment[] = []
+        const source = Array.isArray(loadoutIds) ? loadoutIds : (Array.isArray(loadoutNames) ? loadoutNames : [])
+        source.forEach((val: any) => {
+          const it = (EQUIPMENT as any[]).find((eq) => (eq as any).id === val) || (EQUIPMENT as any[]).find((eq) => String((eq as any).name).toLowerCase() === String(val).toLowerCase())
+          if (it) items.push(it as any)
+        })
+        if (items.length) setLoadout(items)
+      }
+
+      // Skills & sources
+      const impSkillProf = get('skillProf')
+      if (impSkillProf && typeof impSkillProf === 'object') setSkillProf(impSkillProf)
+      const impSkillSources = get('skillSources')
+      if (impSkillSources && typeof impSkillSources === 'object') setSkillSources(impSkillSources)
+      const impClassSkillPicks = get('classSkillPicks')
+      if (impClassSkillPicks && typeof impClassSkillPicks === 'object') setClassSkillPicks(impClassSkillPicks)
+      const impBgRepl = get('bgReplPicks')
+      if (Array.isArray(impBgRepl)) setBgReplPicks(impBgRepl)
+      const impRaceRepl = get('raceReplPicks')
+      if (Array.isArray(impRaceRepl)) setRaceReplPicks(impRaceRepl)
+
+      // Class feature decisions
+      const impCfc = get('classFeatureChoices')
+      if (impCfc && typeof impCfc === 'object') setClassFeatureChoices(impCfc)
+
+      // Spells (accept knownSpells/preparedSpells or spells.known/prepared)
+      const impKnown = get('knownSpells') || (obj.spells && obj.spells.known)
+      if (impKnown && typeof impKnown === 'object') setKnownSpells(impKnown)
+      const impPrepared = get('preparedSpells') || (obj.spells && obj.spells.prepared)
+      if (impPrepared && typeof impPrepared === 'object') setPreparedSpells(impPrepared)
+
+      // ASI/Feats
+      const impAsi = get('asiAlloc') || get('asi')
+      if (impAsi && typeof impAsi === 'object') setAsiAlloc(impAsi)
+      const impFeats: any = get('selectedFeats') || get('feats')
+      if (Array.isArray(impFeats)) {
+        const mapped = (impFeats as any[]).map((f) => {
+          // accept id or name
+          const m = FEATS.find((x) => x.id === f || x.name.toLowerCase() === String(f).toLowerCase())
+          return m ? m.id : String(f)
+        })
+        setSelectedFeats(mapped)
+      }
+      const impFeatChoices = get('featChoices')
+      if (impFeatChoices && typeof impFeatChoices === 'object') setFeatChoices(impFeatChoices)
+
+      // UI prefs (optional)
+      if (typeof get('skillTab') === 'string') setSkillTab(get('skillTab') === 'sources' ? 'sources' : 'list')
+      if (typeof get('skillLayout') === 'string') setSkillLayout(get('skillLayout'))
+      if (typeof get('skillSort') === 'string') setSkillSort(get('skillSort'))
+    } catch (e) {
+      throw e
+    }
+  }
+
+  function onImportFileSelected(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = () => {
+      try {
+        const txt = String(reader.result || '')
+        const obj = JSON.parse(txt)
+        importFromObject(obj)
+        window.alert('Character imported.')
+      } catch (err: any) {
+        try { console.error(err) } catch {}
+        window.alert('Failed to import JSON. Please ensure the file matches the builder schema.')
+      } finally {
+        try { if (importInputRef.current) importInputRef.current.value = '' } catch {}
+      }
+    }
+    reader.onerror = () => {
+      window.alert('Failed to read file.')
+      try { if (importInputRef.current) importInputRef.current.value = '' } catch {}
+    }
+    reader.readAsText(file)
+  }
+
   // Helper: build a mapping from plan to next state pieces
   function mapPlanToState(plan: any) {
     // Map race/background by name
@@ -1678,6 +1866,9 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
             }}
           >Reset Character</Button>
           <Button size="sm" onClick={snapshot}><Settings2 size={16} style={{ marginRight: 6 }} />Save Draft</Button>
+          <Button size="sm" variant="outline" onClick={exportToFile}>Export JSON</Button>
+          <input ref={importInputRef} type="file" accept="application/json" style={{ display: 'none' }} onChange={onImportFileSelected} />
+          <Button size="sm" variant="outline" onClick={() => importInputRef.current?.click()}>Import JSON</Button>
         </div>
       </div>
 
