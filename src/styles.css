@@ -56,6 +56,13 @@ body {
 * { box-sizing: border-box; }
 section { background: var(--card-bg); }
 
+/* Utility: hide scrollbars while preserving scroll functionality */
+.no-scrollbar {
+	scrollbar-width: none; /* Firefox */
+	-ms-overflow-style: none; /* IE/Edge */
+}
+.no-scrollbar::-webkit-scrollbar { display: none; }
+
 /* Better visibility: focus rings and subtle hover cue for all buttons/inputs */
 :where(button,[role="button"],input,select,textarea):focus-visible {
 	outline: 2px solid var(--focus-ring);

@@ -40,8 +40,8 @@ export type SpellMeta = { school?: MagicSchool; damageTypes?: DamageType[]; save
 
 // Equipment and Feats
 export type Equipment =
-  | { id: string; name: string; type: 'weapon'; group?: string; hands?: number; dmg: string; tags?: string[]; grants?: string[] }
-  | { id: string; name: string; type: 'shield'; ac?: number; hands?: number; tags?: string[]; grants?: string[] }
-  | { id: string; name: string; type: 'armor'; ac: number; dexMax: number; reqStr?: number; tags?: string[] }
+  | { id: string; name: string; type: 'weapon'; group?: string; hands?: number; dmg: string; weight?: number; cost?: number; tags?: string[]; grants?: string[] }
+  | { id: string; name: string; type: 'shield'; ac?: number; hands?: number; weight?: number; cost?: number; tags?: string[]; grants?: string[] }
+  | { id: string; name: string; type: 'armor'; ac: number; dexMax: number; reqStr?: number; weight?: number; cost?: number; tags?: string[] }
 
 export type Feat = { id: string; name: string; text: string; tags?: string[] }

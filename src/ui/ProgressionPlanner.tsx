@@ -79,6 +79,8 @@ type ProgressStepData = {
   notes?: string
   // UI/Customization
   collapsed?: boolean
+  // Marks this step as a future/planned choice (not yet taken). Affects styling & builder reference logic.
+  future?: boolean
   // Feature choices bundle
   featureChoices?: FeatureChoice[]
   // UI state (derived, not persisted)
@@ -268,50 +270,27 @@ function ScratchBlockView(props: {
 }
 
 function ProgressStepNode({ id, data }: { id: string; data: ProgressStepData }) {
-  const { deleteElements, getNode, getEdges, setNodes: rfSetNodes, setEdges: rfSetEdges, getNodes } = useReactFlow()
-  const handleDelete = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation(); e.preventDefault();
-    deleteElements({ nodes: [{ id }] })
-  }, [deleteElements, id])
+  const { deleteElements, getEdges, setNodes: rfSetNodes, setEdges: rfSetEdges, getNodes, getNode } = useReactFlow()
+  const handleDelete = useCallback((e: React.MouseEvent) => { e.stopPropagation(); e.preventDefault(); deleteElements({ nodes: [{ id }] }) }, [deleteElements, id])
+  const [over, setOver] = useState<string | null>(null)
+  const [overAny, setOverAny] = useState(false)
+  const future = !!data.future
 
-  // DnD typed holes state
-  const [over, setOver] = React.useState<string | null>(null)
-  const [overAny, setOverAny] = React.useState<boolean>(false)
-
-  // Drag-to-fill state for class levels
-  const fillRef = React.useRef<{
-    active: boolean
-    startClientX: number
-    baseX: number
-    baseY: number
-    baseLevel: number
-    className?: string
-    lastId: string
-    added: number
-    deleted: number
-  }>({ active: false, startClientX: 0, baseX: 0, baseY: 0, baseLevel: 1, className: undefined, lastId: id, added: 0, deleted: 0 })
-
-  const stopFillListeners = React.useCallback(() => {
+  // Drag-to-fill refs/state
+  const fillRef = useRef<{ active: boolean; startClientX: number; baseX: number; baseY: number; baseLevel: number; className?: string; lastId: string; added: number; deleted: number }>({ active: false, startClientX: 0, baseX: 0, baseY: 0, baseLevel: 1, className: undefined, lastId: id, added: 0, deleted: 0 })
+  const stopFillListeners = useCallback(() => {
     window.removeEventListener('pointermove', onFillMove as any)
     window.removeEventListener('pointerup', onFillEnd as any)
   }, [])
-
-  const onFillEnd = React.useCallback((e?: PointerEvent) => {
-    // finalize
-    fillRef.current.active = false
-    stopFillListeners()
-  }, [stopFillListeners])
-
-  const onFillMove = React.useCallback((e: PointerEvent) => {
+  const onFillEnd = useCallback(() => { fillRef.current.active = false; stopFillListeners() }, [stopFillListeners])
+  const onFillMove = useCallback((e: PointerEvent) => {
     if (!fillRef.current.active) return
     const dxRaw = e.clientX - fillRef.current.startClientX
     const stepPx = 120
     if (dxRaw >= 0) {
-      // Adding to the right
       const dx = Math.max(0, dxRaw)
       let want = Math.floor(dx / stepPx)
       if (want <= fillRef.current.added) return
-      // Cap by remaining levels up to 20
       const remaining = Math.max(0, 20 - fillRef.current.baseLevel)
       want = Math.min(want, remaining)
       let prevId = fillRef.current.lastId
@@ -322,12 +301,7 @@ function ProgressStepNode({ id, data }: { id: string; data: ProgressStepData }) 
       for (let i = fillRef.current.added + 1; i <= want; i += 1) {
         const level = fillRef.current.baseLevel + i
         const nid = `step-${crypto.randomUUID().slice(0, 6)}`
-        toAddNodes.push({
-          id: nid,
-          type: 'progressStep',
-          position: { x: fillRef.current.baseX + i * 320, y: fillRef.current.baseY },
-          data: { level, type: 'class', className: fillRef.current.className, collapsed: true } as any,
-        })
+        toAddNodes.push({ id: nid, type: 'progressStep', position: { x: fillRef.current.baseX + i * 320, y: fillRef.current.baseY }, data: { level, type: 'class', className: fillRef.current.className, collapsed: true } as any })
         toAddEdges.push({ id: `e-${crypto.randomUUID().slice(0, 6)}`, source: prevId, target: nid })
         prevId = nid
       }
@@ -336,15 +310,12 @@ function ProgressStepNode({ id, data }: { id: string; data: ProgressStepData }) 
       if (toAddNodes.length) rfSetNodes?.([...(nodesList as any), ...toAddNodes])
       if (toAddEdges.length) rfSetEdges?.([...(edgesList as any), ...toAddEdges])
     } else {
-      // Deleting to the left
       const dx = Math.abs(dxRaw)
       let wantDel = Math.floor(dx / stepPx)
       if (wantDel <= fillRef.current.deleted) return
-      // Determine current forward chain of same-class class nodes after the base
       const nodesList = (getNodes?.() as any[]) || []
       const edgesList = (getEdges?.() as any[]) || []
       const idToNode = new Map(nodesList.map((n: any) => [n.id, n] as const))
-      // Build forward sequence from base id following lowest-y outgoing targets
       const forward: any[] = []
       let cur = id
       let guard = 0
@@ -352,8 +323,7 @@ function ProgressStepNode({ id, data }: { id: string; data: ProgressStepData }) 
         guard += 1
         const outs = (edgesList as any[]).filter((e: any) => e.source === cur)
         if (!outs.length) break
-        const nextId = outs
-          .map((e: any) => ({ e, n: idToNode.get(e.target) }))
+        const nextId = outs.map((e: any) => ({ e, n: idToNode.get(e.target) }))
           .filter((x: any) => !!x.n)
           .sort((a: any, b: any) => (a.n!.position?.y || 0) - (b.n!.position?.y || 0))[0]?.n?.id
         if (!nextId) break
@@ -362,7 +332,6 @@ function ProgressStepNode({ id, data }: { id: string; data: ProgressStepData }) 
         forward.push(nn)
         cur = nextId
       }
-      // Filter only same-class class nodes
       const className = fillRef.current.className
       const sameClassForward = forward.filter((n) => n.type === 'progressStep' && n.data?.type === 'class' && n.data?.className === className)
       const deletable = sameClassForward.length
@@ -374,40 +343,24 @@ function ProgressStepNode({ id, data }: { id: string; data: ProgressStepData }) 
       const remainingNodes = nodesList.filter((n: any) => !toRemove.includes(n.id))
       const remainingEdges = edgesList.filter((e: any) => !toRemove.includes(e.source) && !toRemove.includes(e.target))
       fillRef.current.deleted = wantDel
-      // Update lastId if we deleted nodes that were after lastId
       if (toRemove.includes(fillRef.current.lastId)) {
-        // Reset lastId to the last existing in chain or base id
         const stillThere = sameClassForward.filter((n) => !toRemove.includes(n.id)).pop()?.id || id
         fillRef.current.lastId = stillThere
       }
       rfSetNodes?.(remainingNodes as any)
       rfSetEdges?.(remainingEdges as any)
     }
-  }, [getNodes, getEdges, rfSetNodes, rfSetEdges])
-
-  const onFillStart = React.useCallback((e: React.PointerEvent) => {
+  }, [getNodes, getEdges, rfSetNodes, rfSetEdges, id])
+  const onFillStart = useCallback((e: React.PointerEvent) => {
     if (data.type !== 'class' || !data.className) return
     e.preventDefault(); e.stopPropagation()
     const n = getNode?.(id) as any
-    fillRef.current = {
-      active: true,
-      startClientX: e.clientX,
-      baseX: (n?.position?.x ?? 0),
-      baseY: (n?.position?.y ?? 0),
-      baseLevel: Number(data.level) || 1,
-      className: data.className,
-      lastId: id,
-  added: 0,
-  deleted: 0,
-    }
+    fillRef.current = { active: true, startClientX: e.clientX, baseX: (n?.position?.x ?? 0), baseY: (n?.position?.y ?? 0), baseLevel: Number(data.level) || 1, className: data.className, lastId: id, added: 0, deleted: 0 }
     window.addEventListener('pointermove', onFillMove as any)
     window.addEventListener('pointerup', onFillEnd as any, { once: true })
   }, [data.type, data.className, data.level, id, getNode, onFillMove, onFillEnd])
 
-  // Tags and Checklist removed per request
-
   const toggleCollapsed = () => data.onChange?.({ collapsed: !data.collapsed })
-
   const summary = useMemo(() => {
     const parts: string[] = []
     parts.push(`L${data.level}`)
@@ -428,14 +381,10 @@ function ProgressStepNode({ id, data }: { id: string; data: ProgressStepData }) 
       if (kinds.has('other')) labels.push('Other')
       parts.push(labels.length ? `Choices: ${labels.join(', ')}` : 'Choices')
     }
-    if (data.type === 'subclass') {
-      parts.push(`Subclass${data.subclass ? `: ${data.subclass}` : ''}`)
-    }
+    if (data.type === 'subclass') parts.push(`Subclass${data.subclass ? `: ${data.subclass}` : ''}`)
     if ((data.notes || '').trim()) parts.push((data.notes || '').trim().slice(0, 32))
     return parts.join(' • ')
-  }, [data.level, data.type, data.className, data.featName, data.asi, data.notes])
-
-  // Only certain levels qualify for ASI/Feat when type === 'level'
+  }, [data.level, data.type, data.className, data.featName, data.asi, data.notes, data.featureChoices, data.subclass, data.ability1, data.ability2])
   const qualifiesForImprovements = useMemo(() => {
     const lvl = Number(data.level)
     const base = [4, 8, 12, 16, 19].includes(lvl)
@@ -443,18 +392,14 @@ function ProgressStepNode({ id, data }: { id: string; data: ProgressStepData }) 
     const rogueExtra = data.className === 'Rogue' && lvl === 10
     return base || fighterExtra || rogueExtra
   }, [data.level, data.className])
-
-  // Single bottom attachment handle: allow ASI or Bundle to connect into Class steps
   const isValidAttachConnection = useCallback((conn: any) => {
     if (conn?.targetHandle !== 'attach') return true
     const src = conn?.source ? getNode(conn.source) as any : null
     const tgt = conn?.target ? getNode(conn.target) as any : null
-  const okSource = !!(src && src.type === 'progressStep' && (src.data?.type === 'asi' || src.data?.type === 'bundle' || src.data?.type === 'subclass'))
+    const okSource = !!(src && src.type === 'progressStep' && (src.data?.type === 'asi' || src.data?.type === 'bundle' || src.data?.type === 'subclass'))
     const okTarget = !!(tgt && tgt.type === 'progressStep' && tgt.data?.type === 'class')
     return okSource && okTarget
   }, [getNode])
-
-  // Small indicator for how many items are attached via the single bottom handle
   const attachedChoiceCount = useMemo(() => {
     const directChoices = Array.isArray((data as any)?.featureChoices) ? (data as any).featureChoices.length : 0
     if ((data as any)?.type !== 'class') return directChoices
@@ -464,428 +409,208 @@ function ProgressStepNode({ id, data }: { id: string; data: ProgressStepData }) 
       for (const e of incoming) {
         const src = getNode?.(e.source) as any
         if (!src || src.type !== 'progressStep') continue
-  if (src.data?.type === 'bundle' && Array.isArray(src.data?.featureChoices)) extra += src.data.featureChoices.length
-  else if (src.data?.type === 'asi') extra += 1
-  else if (src.data?.type === 'subclass') extra += 1
+        if (src.data?.type === 'bundle' && Array.isArray(src.data?.featureChoices)) extra += src.data.featureChoices.length
+        else if (src.data?.type === 'asi') extra += 1
+        else if (src.data?.type === 'subclass') extra += 1
       }
       return directChoices + extra
-    } catch {
-      return directChoices
-    }
+    } catch { return directChoices }
   }, [data, getEdges, getNode, id])
-
   const activeGlow = data?._active ? '0 0 0 2px rgba(14,165,233,0.35), 0 6px 20px rgba(14,165,233,0.25)' : '0 1px 2px rgba(0,0,0,0.06)'
   return (
-    <div
-      style={{ position: 'relative', boxShadow: activeGlow, outline: overAny ? '2px dashed #0ea5e9' : undefined, outlineOffset: -2 }}
-      onDragOver={(e) => {
-        // Allow dropping of tokens anywhere on the node; apply based on node type
-        if (Array.from(e.dataTransfer.types || []).includes(DND_TOKEN_MIME)) {
-          e.preventDefault()
-          setOverAny(true)
-        }
-      }}
+    <div style={{ position: 'relative', boxShadow: activeGlow, outline: overAny ? '2px dashed #0ea5e9' : undefined, outlineOffset: -2, opacity: future ? 0.55 : undefined }}
+      onDragOver={(e) => { if (Array.from(e.dataTransfer.types || []).includes(DND_TOKEN_MIME)) { e.preventDefault(); setOverAny(true) } }}
       onDragLeave={() => setOverAny(false)}
       onDrop={(e) => {
         setOverAny(false)
-        const raw = e.dataTransfer.getData(DND_TOKEN_MIME)
-        if (!raw) return
+        const raw = e.dataTransfer.getData(DND_TOKEN_MIME); if (!raw) return
         try {
           const tok = JSON.parse(raw)
-          // Apply class token to class steps
-          if (data.type === 'class' && tok.type === 'class' && (CLASSES as readonly string[]).includes(tok.value)) {
-            data.onChange?.({ className: tok.value })
-            e.stopPropagation()
-            return
-          }
-          // Apply ability tokens to ASI steps
+          if (data.type === 'class' && tok.type === 'class' && (CLASSES as readonly string[]).includes(tok.value)) { data.onChange?.({ className: tok.value }); e.stopPropagation(); return }
           if (data.type === 'asi' && tok.type === 'ability' && (ABILITIES as readonly string[]).includes(tok.value)) {
-            const a1 = (data.ability1 as any) || null
-            const a2 = (data.ability2 as any) || null
-            if (!a1) {
-              data.onChange?.({ ability1: tok.value as any, asi: buildAsiString(tok.value, a2 as any) })
-            } else if (!a2) {
-              data.onChange?.({ ability2: tok.value as any, asi: buildAsiString(a1 as any, tok.value) })
-            } else {
-              // If both filled, replace the second for convenience
-              data.onChange?.({ ability2: tok.value as any, asi: buildAsiString(a1 as any, tok.value) })
-            }
-            e.stopPropagation()
-            return
+            const a1 = (data.ability1 as any) || null; const a2 = (data.ability2 as any) || null
+            if (!a1) data.onChange?.({ ability1: tok.value as any, asi: buildAsiString(tok.value, a2 as any) })
+            else if (!a2) data.onChange?.({ ability2: tok.value as any, asi: buildAsiString(a1 as any, tok.value) })
+            else data.onChange?.({ ability2: tok.value as any, asi: buildAsiString(a1 as any, tok.value) })
+            e.stopPropagation(); return
           }
         } catch {}
-      }}
-    >
-      {/* Kebab actions */}
+      }}>
       <details className="nodrag nopan" style={{ position: 'absolute', top: 4, right: 4, zIndex: 10 }}>
-        <summary
-          role="button"
-          style={{ listStyle: 'none', width: 24, height: 24, borderRadius: 999, border: '1px solid #e2e8f0', background: '#fff', cursor: 'pointer', color: '#0f172a', lineHeight: '22px', textAlign: 'center', boxShadow: '0 1px 2px rgba(0,0,0,0.06)' }}
-          onPointerDown={(e) => { e.stopPropagation() }}
-          onMouseDown={(e) => { e.stopPropagation() }}
-          onClick={(e) => { e.stopPropagation() }}
-          title="Node actions"
-        >⋯</summary>
-        <div
-          style={{ position: 'absolute', right: 0, top: 28, display: 'grid', gap: 6, background: 'white', border: '1px solid #e2e8f0', borderRadius: 8, padding: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.12)' }}
-          onClick={(e) => e.stopPropagation()}
-        >
+        <summary role="button" style={{ listStyle: 'none', width: 24, height: 24, borderRadius: 999, border: '1px solid #e2e8f0', background: '#fff', cursor: 'pointer', color: '#0f172a', lineHeight: '22px', textAlign: 'center', boxShadow: '0 1px 2px rgba(0,0,0,0.06)' }} onPointerDown={(e) => { e.stopPropagation() }} onMouseDown={(e) => { e.stopPropagation() }} onClick={(e) => { e.stopPropagation() }} title="Node actions">⋯</summary>
+        <div style={{ position: 'absolute', right: 0, top: 28, display: 'grid', gap: 6, background: 'white', border: '1px solid #e2e8f0', borderRadius: 8, padding: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.12)' }} onClick={(e) => e.stopPropagation()}>
           <button className="nodrag nopan" style={btn} onClick={(e) => { e.preventDefault(); handleDelete(e as any); const dtl = (e.currentTarget as HTMLElement).closest('details') as HTMLDetailsElement | null; if (dtl) dtl.removeAttribute('open') }}>Delete</button>
           <button className="nodrag nopan" style={btn} onClick={(e) => { e.preventDefault(); toggleCollapsed(); const dtl = (e.currentTarget as HTMLElement).closest('details') as HTMLDetailsElement | null; if (dtl) dtl.removeAttribute('open') }}>{data.collapsed ? 'Show' : 'Hide'}</button>
-          {data.onApply ? (
-            <button className="nodrag nopan" style={btn} onClick={(e) => { e.preventDefault(); data.onApply?.(); const dtl = (e.currentTarget as HTMLElement).closest('details') as HTMLDetailsElement | null; if (dtl) dtl.removeAttribute('open') }}>Apply to Builder</button>
-          ) : null}
-          {data.onCloneFromSelf ? (
-            <button className="nodrag nopan" style={btn} onClick={(e) => { e.preventDefault(); data.onCloneFromSelf?.(); const dtl = (e.currentTarget as HTMLElement).closest('details') as HTMLDetailsElement | null; if (dtl) dtl.removeAttribute('open') }}>Duplicate Branch</button>
-          ) : null}
+          {data.onApply ? (<button className="nodrag nopan" style={btn} onClick={(e) => { e.preventDefault(); data.onApply?.(); const dtl = (e.currentTarget as HTMLElement).closest('details') as HTMLDetailsElement | null; if (dtl) dtl.removeAttribute('open') }}>Apply to Builder</button>) : null}
+          {data.onCloneFromSelf ? (<button className="nodrag nopan" style={btn} onClick={(e) => { e.preventDefault(); data.onCloneFromSelf?.(); const dtl = (e.currentTarget as HTMLElement).closest('details') as HTMLDetailsElement | null; if (dtl) dtl.removeAttribute('open') }}>Duplicate Branch</button>) : null}
         </div>
       </details>
       <Handle type="target" position={Position.Left} />
-      {/* Drag-to-fill handle (top-right corner) for class steps */}
-    {data?.type === 'class' ? (
-        <div
-          className="nodrag nopan"
-          onPointerDown={onFillStart}
-          title={data.className ? `Drag to extend ${data.className} levels` : 'Set class to enable quick-fill'}
-      style={{ position: 'absolute', bottom: -8, right: -8, width: 16, height: 16, borderRadius: 4, border: '1px solid #e2e8f0', background: '#f8fafc', color: '#0f172a', cursor: data.className ? 'ew-resize' : 'not-allowed', display: 'grid', placeItems: 'center', fontSize: 10, boxShadow: '0 1px 2px rgba(0,0,0,0.06)', zIndex: 10 }}
-        >»</div>
-      ) : null}
-  {/* Remove top target; single connection lives at the bottom */}
-      {/* For bundle and ASI steps, expose a top source handle so they can attach upward into the class bottom handle */}
-  {data?.type === 'bundle' || data?.type === 'asi' || data?.type === 'subclass' ? (
-        <Handle
-          type="source"
-          id="top"
-          position={Position.Top}
-          style={{ background: '#0ea5e9', width: 10, height: 10, border: '2px solid #fff' }}
-        />
-      ) : null}
-      {/* Single bottom attachment handle that accepts Bundle or ASI (only on class steps) */}
       {data?.type === 'class' ? (
-        <Handle
-          type="target"
-          id="attach"
-          position={Position.Bottom}
-          isValidConnection={isValidAttachConnection}
-          style={{ background: '#0ea5e9', width: 10, height: 10, border: '2px solid #fff' }}
-        />
+        <div className="nodrag nopan" onPointerDown={onFillStart} title={data.className ? `Drag to extend ${data.className} levels` : 'Set class to enable quick-fill'} style={{ position: 'absolute', bottom: -8, right: -8, width: 16, height: 16, borderRadius: 4, border: '1px solid #e2e8f0', background: '#f8fafc', color: '#0f172a', cursor: data.className ? 'ew-resize' : 'not-allowed', display: 'grid', placeItems: 'center', fontSize: 10, boxShadow: '0 1px 2px rgba(0,0,0,0.06)', zIndex: 10 }}>»</div>
       ) : null}
-  {/* Quick attach: single + button — on subclass unlock levels create a Subclass node; else ASI if qualifies; else a generic Bundle */}
+      {data?.type === 'bundle' || data?.type === 'asi' || data?.type === 'subclass' ? (<Handle type="source" id="top" position={Position.Top} style={{ background: '#0ea5e9', width: 10, height: 10, border: '2px solid #fff' }} />) : null}
+      {data?.type === 'class' ? (<Handle type="target" id="attach" position={Position.Bottom} isValidConnection={isValidAttachConnection} style={{ background: '#0ea5e9', width: 10, height: 10, border: '2px solid #fff' }} />) : null}
       {data?.type === 'class' ? (
-        <button
-          className="nodrag nopan"
-          onClick={(e) => {
-            e.preventDefault(); e.stopPropagation()
-            try {
-              const nid = `step-${crypto.randomUUID().slice(0, 6)}`
-              const y = (getNode?.(id) as any)?.position?.y ?? 0
-              const x = (getNode?.(id) as any)?.position?.x ?? 0
-              const subclassLevel = data.className ? SUBCLASS_LEVELS[data.className as keyof typeof SUBCLASS_LEVELS] : undefined
-              const makeSubclass = !!(data.className && subclassLevel && Number(data.level) === subclassLevel)
-              const makeAsi = !makeSubclass && !!qualifiesForImprovements
-              const newNode: any = {
-                id: nid,
-                type: 'progressStep',
-                position: { x: x, y: y + 100 },
-                data: makeAsi
-                  ? { level: data.level, type: 'asi', ability1: null, ability2: null, asi: '', collapsed: false }
-                  : makeSubclass
-                    ? { level: data.level, type: 'subclass', subclass: '', collapsed: false }
-                    : { level: data.level, type: 'bundle', featureChoices: [], collapsed: false }
-              }
-              const newEdge: any = { id: `e-${crypto.randomUUID().slice(0, 6)}`, source: nid, sourceHandle: 'top', target: id, targetHandle: 'attach' }
-              const list = (getNodes?.() as any[]) || []
-              rfSetNodes?.([...(list as any), newNode])
-              const existingEdges = (getEdges?.() as any[]) || []
-              rfSetEdges?.([...(existingEdges as any), newEdge])
-            } catch {}
-          }}
-          title={(data.className && SUBCLASS_LEVELS[data.className as keyof typeof SUBCLASS_LEVELS] === Number(data.level)) ? 'Attach Subclass' : (qualifiesForImprovements ? 'Attach ASI' : 'Attach Feature Choices')}
-          style={{ position: 'absolute', bottom: -10, left: '50%', transform: 'translateX(8px)', width: 20, height: 20, borderRadius: 999, border: '1px solid #e2e8f0', background: '#fff', color: '#0f172a', cursor: 'pointer', boxShadow: '0 1px 2px rgba(0,0,0,0.06)' }}
-        >+
-        </button>
+        <button className="nodrag nopan" onClick={(e) => {
+          e.preventDefault(); e.stopPropagation();
+          try {
+            const nid = `step-${crypto.randomUUID().slice(0, 6)}`
+            const y = (getNode?.(id) as any)?.position?.y ?? 0
+            const x = (getNode?.(id) as any)?.position?.x ?? 0
+            const subclassLevel = data.className ? SUBCLASS_LEVELS[data.className as keyof typeof SUBCLASS_LEVELS] : undefined
+            const makeSubclass = !!(data.className && subclassLevel && Number(data.level) === subclassLevel)
+            const makeAsi = !makeSubclass && !!qualifiesForImprovements
+            const newNode: any = { id: nid, type: 'progressStep', position: { x, y: y + 100 }, data: makeAsi ? { level: data.level, type: 'asi', ability1: null, ability2: null, asi: '', collapsed: false } : makeSubclass ? { level: data.level, type: 'subclass', subclass: '', collapsed: false } : { level: data.level, type: 'bundle', featureChoices: [], collapsed: false } }
+            const newEdge: any = { id: `e-${crypto.randomUUID().slice(0, 6)}`, source: nid, sourceHandle: 'top', target: id, targetHandle: 'attach' }
+            const list = (getNodes?.() as any[]) || []
+            rfSetNodes?.([...(list as any), newNode])
+            const existingEdges = (getEdges?.() as any[]) || []
+            rfSetEdges?.([...(existingEdges as any), newEdge])
+          } catch {}
+        }} title={(data.className && SUBCLASS_LEVELS[data.className as keyof typeof SUBCLASS_LEVELS] === Number(data.level)) ? 'Attach Subclass' : (qualifiesForImprovements ? 'Attach ASI' : 'Attach Feature Choices')} style={{ position: 'absolute', bottom: -10, left: '50%', transform: 'translateX(8px)', width: 20, height: 20, borderRadius: 999, border: '1px solid #e2e8f0', background: '#fff', color: '#0f172a', cursor: 'pointer', boxShadow: '0 1px 2px rgba(0,0,0,0.06)' }}>+</button>
       ) : null}
-          {/* Tiny count badge for attached decisions (only shows on class steps and when > 0) */}
-  {data?.type === 'class' && attachedChoiceCount > 0 ? (
-        <div
-          className="nodrag nopan"
-          style={{ position: 'absolute', bottom: -4, left: '50%', transform: 'translateX(10px)', background: '#0ea5e9', color: '#fff', fontSize: 10, lineHeight: '14px', height: 16, minWidth: 16, padding: '0 4px', borderRadius: 999, border: '2px solid #fff', textAlign: 'center', boxShadow: '0 1px 2px rgba(0,0,0,0.08)' }}
-          title="Attached feature choices"
-        >{attachedChoiceCount}</div>
+      {data?.type === 'class' && attachedChoiceCount > 0 ? (
+        <div className="nodrag nopan" style={{ position: 'absolute', bottom: -4, left: '50%', transform: 'translateX(10px)', background: '#0ea5e9', color: '#fff', fontSize: 10, lineHeight: '14px', height: 16, minWidth: 16, padding: '0 4px', borderRadius: 999, border: '2px solid #fff', textAlign: 'center', boxShadow: '0 1px 2px rgba(0,0,0,0.08)' }} title="Attached feature choices">{attachedChoiceCount}</div>
       ) : null}
-  <PanelBox title={`Step — ${summary}`}>
+      <PanelBox title={`Step — ${summary}`}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <span style={{ ...badge }}>Type: {data.type}</span>
             <span style={{ ...badge }}>Level: {data.level}</span>
           </div>
-          {/* actions moved to kebab */}
         </div>
-  {!data.collapsed && (
-  <>
-  <label style={{ display: 'grid', gap: 6, fontSize: 12, color: '#475569' }}>
-      <span>Character Level</span>
-      <input type="number" min={1} max={20} value={data.level}
-         onChange={(e) => data.onChange?.({ level: Math.max(1, Math.min(20, parseInt(e.target.value || '1', 10))) })}
-         style={inp} />
-    </label>
-        <label style={{ display: 'grid', gap: 6, fontSize: 12, color: '#475569' }}>
-          <span>Step Type</span>
-          <select value={data.type} onChange={(e) => data.onChange?.({ type: e.target.value as StepType })} style={inp}>
-            <option value="class">Class Level</option>
-            <option value="feat">Feat</option>
-            <option value="asi">ASI</option>
-            <option value="bundle">Feature Choices</option>
-            <option value="note">Note</option>
-          </select>
-        </label>
-  {data.type === 'class' && (
-          <label style={{ display: 'grid', gap: 6, fontSize: 12, color: '#475569' }}>
-            <span>Class</span>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-              <span
-                onDragOver={(e) => { e.preventDefault(); setOver('class') }}
-                onDragLeave={() => setOver(null)}
-                onDrop={(e) => {
-                  setOver(null)
-                  const raw = e.dataTransfer.getData('application/x-scratch-token')
-                  if (!raw) return
-                  try {
-                    const tok = JSON.parse(raw)
-                    if (tok.type === 'class' && (CLASSES as readonly string[]).includes(tok.value)) data.onChange?.({ className: tok.value })
-                  } catch {}
-                }}
-                style={{ display: 'inline-flex', alignItems: 'center', minWidth: 72, padding: '4px 8px', borderRadius: 8, border: `2px dashed ${over === 'class' ? '#0ea5e9' : '#cbd5e1'}`, background: over === 'class' ? '#e0f2fe' : '#f8fafc', color: '#0f172a', fontSize: 12, gap: 6 }}
-              >{data.className ? <span style={{ padding: '2px 6px', borderRadius: 999, background: '#e2e8f0', fontSize: 12 }}>{data.className}</span> : <span style={{ color: '#64748b' }}>drop class here</span>}</span>
-              <select value={data.className || 'Fighter'} onChange={(e) => data.onChange?.({ className: e.target.value as any })} style={inp}>
-                {(CLASSES as readonly string[])
-                  .slice()
-                  .sort((a, b) => a.localeCompare(b))
-                  .map((c: string) => (<option key={c} value={c}>{c}</option>))}
+        {!data.collapsed && (
+          <>
+            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, background: '#fff', border: '1px solid #e2e8f0', padding: '4px 8px', borderRadius: 6, width: 'fit-content' }} title="Mark this step as a planned future choice (will appear greyed)">
+              <input type="checkbox" checked={future} onChange={e => data.onChange?.({ future: e.target.checked })} />
+              <span>{future ? 'Future Step (planned)' : 'Current Step'}</span>
+            </label>
+            <label style={{ display: 'grid', gap: 6, fontSize: 12, color: '#475569' }}>
+              <span>Character Level</span>
+              <input type="number" min={1} max={20} value={data.level} onChange={(e) => data.onChange?.({ level: Math.max(1, Math.min(20, parseInt(e.target.value || '1', 10))) })} style={inp} />
+            </label>
+            <label style={{ display: 'grid', gap: 6, fontSize: 12, color: '#475569' }}>
+              <span>Step Type</span>
+              <select value={data.type} onChange={(e) => data.onChange?.({ type: e.target.value as StepType })} style={inp}>
+                <option value="class">Class Level</option>
+                <option value="feat">Feat</option>
+                <option value="asi">ASI</option>
+                <option value="bundle">Feature Choices</option>
+                <option value="note">Note</option>
+                <option value="subclass">Subclass</option>
               </select>
-            </div>
-          </label>
-        )}
-        {false && (
-          <div />
-        )}
-  {data.type === 'feat' && (
-          <label style={{ display: 'grid', gap: 6, fontSize: 12, color: '#475569' }}>
-            <span>Feats (this level)</span>
-            <input value={data.featName || ''} onChange={(e) => data.onChange?.({ featName: e.target.value })} placeholder="Great Weapon Master" style={inp} />
-            {/* Optional multiple feats list */}
-            <div style={{ display: 'grid', gap: 6 }}>
-              {(data.feats || []).map((f, i) => (
-                <div key={`${i}-${f}`} style={{ display: 'flex', gap: 6 }}>
-                  <input value={f} onChange={(e) => {
-                    const copy = [...(data.feats || [])]; copy[i] = e.target.value; data.onChange?.({ feats: copy })
-                  }} style={inp} />
-                  <button onClick={() => data.onChange?.({ feats: (data.feats || []).filter((_, idx) => idx !== i) })} style={btn} title="Remove">×</button>
+            </label>
+            {data.type === 'class' && (
+              <label style={{ display: 'grid', gap: 6, fontSize: 12, color: '#475569' }}>
+                <span>Class</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <span onDragOver={(e) => { e.preventDefault(); setOver('class') }} onDragLeave={() => setOver(null)} onDrop={(e) => { setOver(null); const raw = e.dataTransfer.getData('application/x-scratch-token'); if (!raw) return; try { const tok = JSON.parse(raw); if (tok.type === 'class' && (CLASSES as readonly string[]).includes(tok.value)) data.onChange?.({ className: tok.value }) } catch {} }} style={{ display: 'inline-flex', alignItems: 'center', minWidth: 72, padding: '4px 8px', borderRadius: 8, border: `2px dashed ${over === 'class' ? '#0ea5e9' : '#cbd5e1'}`, background: over === 'class' ? '#e0f2fe' : '#f8fafc', color: '#0f172a', fontSize: 12, gap: 6 }}>{data.className ? <span style={{ padding: '2px 6px', borderRadius: 999, background: '#e2e8f0', fontSize: 12 }}>{data.className}</span> : <span style={{ color: '#64748b' }}>drop class here</span>}</span>
+                  <select value={data.className || 'Fighter'} onChange={(e) => data.onChange?.({ className: e.target.value as any })} style={inp}>
+                    {(CLASSES as readonly string[]).slice().sort((a, b) => a.localeCompare(b)).map((c: string) => (<option key={c} value={c}>{c}</option>))}
+                  </select>
                 </div>
-              ))}
-              <button onClick={() => data.onChange?.({ feats: [...(data.feats || []), ''] })} style={btn}>+ Add Feat</button>
-            </div>
-          </label>
-        )}
-  {data.type === 'asi' && (
-          <div style={{ display: 'grid', gap: 6, fontSize: 12, color: '#475569' }}>
-            <span>ASI (+1/+1 or +2):</span>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-              <span
-                onDragOver={(e) => { e.preventDefault(); setOver('a1') }} onDragLeave={() => setOver(null)}
-                onDrop={(e) => { setOver(null); const raw = e.dataTransfer.getData('application/x-scratch-token'); if (!raw) return; try { const tok = JSON.parse(raw); if (tok.type === 'ability') data.onChange?.({ ability1: tok.value as AbilityToken, asi: buildAsiString(tok.value, data.ability2) }) } catch {} }}
-                style={{ display: 'inline-flex', alignItems: 'center', minWidth: 72, padding: '4px 8px', borderRadius: 8, border: `2px dashed ${over === 'a1' ? '#0ea5e9' : '#cbd5e1'}`, background: over === 'a1' ? '#e0f2fe' : '#f8fafc', color: '#0f172a', fontSize: 12, gap: 6 }}
-              >{data.ability1 ? <span style={{ padding: '2px 6px', borderRadius: 999, background: '#e2e8f0', fontSize: 12 }}>{data.ability1}</span> : <span style={{ color: '#64748b' }}>drop ability</span>}</span>
-              <span
-                onDragOver={(e) => { e.preventDefault(); setOver('a2') }} onDragLeave={() => setOver(null)}
-                onDrop={(e) => { setOver(null); const raw = e.dataTransfer.getData('application/x-scratch-token'); if (!raw) return; try { const tok = JSON.parse(raw); if (tok.type === 'ability' && (ABILITIES as readonly string[]).includes(tok.value)) data.onChange?.({ ability2: tok.value as AbilityToken, asi: buildAsiString(data.ability1, tok.value) }) } catch {} }}
-                style={{ display: 'inline-flex', alignItems: 'center', minWidth: 72, padding: '4px 8px', borderRadius: 8, border: `2px dashed ${over === 'a2' ? '#0ea5e9' : '#cbd5e1'}`, background: over === 'a2' ? '#e0f2fe' : '#f8fafc', color: '#0f172a', fontSize: 12, gap: 6 }}
-              >{data.ability2 ? <span style={{ padding: '2px 6px', borderRadius: 999, background: '#e2e8f0', fontSize: 12 }}>{data.ability2}</span> : <span style={{ color: '#64748b' }}>drop ability</span>}</span>
-              <input value={data.asi || ''} onChange={(e) => data.onChange?.({ asi: e.target.value })} placeholder="+2 STR or +1 STR / +1 CON" style={inp} />
-            </div>
-          </div>
-        )}
-        {data.type === 'bundle' && (
-          <div style={{ display: 'grid', gap: 10, fontSize: 12, color: '#475569' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <span>Feature Choices</span>
-              <button
-                style={btn}
-                onClick={() => {
-                  const newChoice: FeatureChoice = { id: `ch-${crypto.randomUUID().slice(0,6)}`, kind: 'fighting-style', style: undefined }
-                  data.onChange?.({ featureChoices: [...(data.featureChoices || []), newChoice] })
-                }}
-              >+ Add Choice</button>
-            </div>
-            <div style={{ display: 'grid', gap: 8 }}>
-              {(data.featureChoices || []).map((c, idx) => (
-                <div key={c.id} style={{ border: '1px solid #e2e8f0', borderRadius: 8, padding: 8, background: '#f8fafc', display: 'grid', gap: 8 }}>
-                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'space-between' }}>
-                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                      <span>Kind</span>
-                      <select
-                        value={c.kind}
-                        onChange={(e) => {
-                          const kind = e.target.value as FeatureChoice['kind']
-                          const base = kind === 'fighting-style' ? { id: c.id, kind, style: undefined as string | undefined } :
-                                       kind === 'skill-proficiency' ? { id: c.id, kind, skills: [] as string[], count: 2 } :
-                                       { id: c.id, kind, text: '' as string }
-                          const next = [...(data.featureChoices || [])]
-                          next[idx] = base as FeatureChoice
-                          data.onChange?.({ featureChoices: next })
-                        }}
-                        style={inp}
-                      >
-                        <option value="fighting-style">Fighting Style</option>
-                        <option value="skill-proficiency">Skill Proficiencies</option>
-                        <option value="other">Other</option>
-                      </select>
+              </label>
+            )}
+            {data.type === 'feat' && (
+              <label style={{ display: 'grid', gap: 6, fontSize: 12, color: '#475569' }}>
+                <span>Feats (this level)</span>
+                <input value={data.featName || ''} onChange={(e) => data.onChange?.({ featName: e.target.value })} placeholder="Great Weapon Master" style={inp} />
+                <div style={{ display: 'grid', gap: 6 }}>
+                  {(data.feats || []).map((f, i) => (
+                    <div key={`${i}-${f}`} style={{ display: 'flex', gap: 6 }}>
+                      <input value={f} onChange={(e) => { const copy = [...(data.feats || [])]; copy[i] = e.target.value; data.onChange?.({ feats: copy }) }} style={inp} />
+                      <button onClick={() => data.onChange?.({ feats: (data.feats || []).filter((_, idx) => idx !== i) })} style={btn} title="Remove">×</button>
                     </div>
-                    <button style={btn} title="Remove" onClick={() => data.onChange?.({ featureChoices: (data.featureChoices || []).filter((x) => x.id !== c.id) })}>×</button>
-                  </div>
-
-                  {c.kind === 'fighting-style' && (
-                    <label style={{ display: 'grid', gap: 6 }}>
-                      <span>Fighting Style</span>
-                      <select
-                        value={(c as any).style || ''}
-                        onChange={(e) => {
-                          const next = [...(data.featureChoices || [])]
-                          next[idx] = { ...(c as any), style: e.target.value } as FeatureChoice
-                          data.onChange?.({ featureChoices: next })
-                        }}
-                        style={inp}
-                      >
-                        <option value="">Select…</option>
-                        {(FIGHTING_STYLES as readonly string[]).map((s) => (<option key={s} value={s}>{s}</option>))}
-                      </select>
-                    </label>
-                  )}
-
-                  {/* Subclass is a dedicated step type */}
-
-                  {c.kind === 'skill-proficiency' && (
-                    <div style={{ display: 'grid', gap: 6 }}>
-                      <label style={{ display: 'grid', gap: 6 }}>
-                        <span>Choose up to</span>
-                        <input
-                          type="number" min={1} max={6}
-                          value={(c as any).count ?? 2}
-                          onChange={(e) => {
-                            const val = Math.max(1, Math.min(6, parseInt(e.target.value || '1', 10)))
-                            const next = [...(data.featureChoices || [])]
-                            const cur = { ...(c as any) }
-                            cur.count = val
-                            if (Array.isArray(cur.skills) && cur.skills.length > val) cur.skills = cur.skills.slice(0, val)
-                            next[idx] = cur as FeatureChoice
-                            data.onChange?.({ featureChoices: next })
-                          }}
-                          style={{ ...inp, width: 80 }}
-                        />
-                      </label>
-                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                        {(SKILLS as readonly string[]).map((s) => {
-                          const sel = Array.isArray((c as any).skills) ? (c as any).skills : []
-                          const max = (c as any).count ?? 2
-                          const checked = sel.includes(s)
-                          const disabled = !checked && sel.length >= max
-                          return (
-                            <label key={s} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, border: '1px solid #cbd5e1', padding: '4px 8px', borderRadius: 8, background: disabled ? '#f1f5f9' : '#fff', color: disabled ? '#94a3b8' : '#0f172a' }}>
-                              <input
-                                type="checkbox"
-                                checked={checked}
-                                disabled={disabled}
-                                onChange={(e) => {
-                                  const next = [...(data.featureChoices || [])]
-                                  const cur = { ...(c as any) }
-                                  const arr: string[] = Array.isArray(cur.skills) ? cur.skills.slice() : []
-                                  if (e.target.checked) { if (!arr.includes(s) && arr.length < max) arr.push(s) }
-                                  else { const i = arr.indexOf(s); if (i >= 0) arr.splice(i, 1) }
-                                  cur.skills = arr
-                                  next[idx] = cur as FeatureChoice
-                                  data.onChange?.({ featureChoices: next })
-                                }}
-                              />
-                              <span style={{ fontSize: 12 }}>{s}</span>
-                            </label>
-                          )
-                        })}
+                  ))}
+                  <button onClick={() => data.onChange?.({ feats: [...(data.feats || []), ''] })} style={btn}>+ Add Feat</button>
+                </div>
+              </label>
+            )}
+            {data.type === 'asi' && (
+              <div style={{ display: 'grid', gap: 6, fontSize: 12, color: '#475569' }}>
+                <span>ASI (+1/+1 or +2):</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <span onDragOver={(e) => { e.preventDefault(); setOver('a1') }} onDragLeave={() => setOver(null)} onDrop={(e) => { setOver(null); const raw = e.dataTransfer.getData('application/x-scratch-token'); if (!raw) return; try { const tok = JSON.parse(raw); if (tok.type === 'ability') data.onChange?.({ ability1: tok.value as AbilityToken, asi: buildAsiString(tok.value, data.ability2) }) } catch {} }} style={{ display: 'inline-flex', alignItems: 'center', minWidth: 72, padding: '4px 8px', borderRadius: 8, border: `2px dashed ${over === 'a1' ? '#0ea5e9' : '#cbd5e1'}`, background: over === 'a1' ? '#e0f2fe' : '#f8fafc', color: '#0f172a', fontSize: 12, gap: 6 }}>{data.ability1 ? <span style={{ padding: '2px 6px', borderRadius: 999, background: '#e2e8f0', fontSize: 12 }}>{data.ability1}</span> : <span style={{ color: '#64748b' }}>drop ability</span>}</span>
+                  <span onDragOver={(e) => { e.preventDefault(); setOver('a2') }} onDragLeave={() => setOver(null)} onDrop={(e) => { setOver(null); const raw = e.dataTransfer.getData('application/x-scratch-token'); if (!raw) return; try { const tok = JSON.parse(raw); if (tok.type === 'ability' && (ABILITIES as readonly string[]).includes(tok.value)) data.onChange?.({ ability2: tok.value as AbilityToken, asi: buildAsiString(data.ability1, tok.value) }) } catch {} }} style={{ display: 'inline-flex', alignItems: 'center', minWidth: 72, padding: '4px 8px', borderRadius: 8, border: `2px dashed ${over === 'a2' ? '#0ea5e9' : '#cbd5e1'}`, background: over === 'a2' ? '#e0f2fe' : '#f8fafc', color: '#0f172a', fontSize: 12, gap: 6 }}>{data.ability2 ? <span style={{ padding: '2px 6px', borderRadius: 999, background: '#e2e8f0', fontSize: 12 }}>{data.ability2}</span> : <span style={{ color: '#64748b' }}>drop ability</span>}</span>
+                  <input value={data.asi || ''} onChange={(e) => data.onChange?.({ asi: e.target.value })} placeholder="+2 STR or +1 STR / +1 CON" style={inp} />
+                </div>
+              </div>
+            )}
+            {data.type === 'bundle' && (
+              <div style={{ display: 'grid', gap: 10, fontSize: 12, color: '#475569' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span>Feature Choices</span>
+                  <button style={btn} onClick={() => { const newChoice: FeatureChoice = { id: `ch-${crypto.randomUUID().slice(0,6)}`, kind: 'fighting-style', style: undefined }; data.onChange?.({ featureChoices: [...(data.featureChoices || []), newChoice] }) }}>+ Add Choice</button>
+                </div>
+                <div style={{ display: 'grid', gap: 8 }}>
+                  {(data.featureChoices || []).map((c, idx) => (
+                    <div key={c.id} style={{ border: '1px solid #e2e8f0', borderRadius: 8, padding: 8, background: '#f8fafc', display: 'grid', gap: 8 }}>
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'space-between' }}>
+                        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                          <span>Kind</span>
+                          <select value={c.kind} onChange={(e) => { const kind = e.target.value as FeatureChoice['kind']; const base = kind === 'fighting-style' ? { id: c.id, kind, style: undefined as string | undefined } : kind === 'skill-proficiency' ? { id: c.id, kind, skills: [] as string[], count: 2 } : { id: c.id, kind, text: '' as string }; const next = [...(data.featureChoices || [])]; next[idx] = base as FeatureChoice; data.onChange?.({ featureChoices: next }) }} style={inp}>
+                            <option value="fighting-style">Fighting Style</option>
+                            <option value="skill-proficiency">Skill Proficiencies</option>
+                            <option value="other">Other</option>
+                          </select>
+                        </div>
+                        <button style={btn} title="Remove" onClick={() => data.onChange?.({ featureChoices: (data.featureChoices || []).filter((x) => x.id !== c.id) })}>×</button>
                       </div>
+                      {c.kind === 'fighting-style' && (
+                        <label style={{ display: 'grid', gap: 6 }}>
+                          <span>Fighting Style</span>
+                          <select value={(c as any).style || ''} onChange={(e) => { const next = [...(data.featureChoices || [])]; next[idx] = { ...(c as any), style: e.target.value } as FeatureChoice; data.onChange?.({ featureChoices: next }) }} style={inp}>
+                            <option value="">Select…</option>
+                            {(FIGHTING_STYLES as readonly string[]).map((s) => (<option key={s} value={s}>{s}</option>))}
+                          </select>
+                        </label>
+                      )}
+                      {c.kind === 'skill-proficiency' && (
+                        <div style={{ display: 'grid', gap: 6 }}>
+                          <label style={{ display: 'grid', gap: 6 }}>
+                            <span>Choose up to</span>
+                            <input type="number" min={1} max={6} value={(c as any).count ?? 2} onChange={(e) => { const val = Math.max(1, Math.min(6, parseInt(e.target.value || '1', 10))); const next = [...(data.featureChoices || [])]; const cur = { ...(c as any) }; cur.count = val; if (Array.isArray(cur.skills) && cur.skills.length > val) cur.skills = cur.skills.slice(0, val); next[idx] = cur as FeatureChoice; data.onChange?.({ featureChoices: next }) }} style={{ ...inp, width: 80 }} />
+                          </label>
+                          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                            {(SKILLS as readonly string[]).map((s) => { const sel = Array.isArray((c as any).skills) ? (c as any).skills : []; const max = (c as any).count ?? 2; const checked = sel.includes(s); const disabled = !checked && sel.length >= max; return (<label key={s} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, border: '1px solid #cbd5e1', padding: '4px 8px', borderRadius: 8, background: disabled ? '#f1f5f9' : '#fff', color: disabled ? '#94a3b8' : '#0f172a' }}><input type="checkbox" checked={checked} disabled={disabled} onChange={(e) => { const next = [...(data.featureChoices || [])]; const cur = { ...(c as any) }; const arr: string[] = Array.isArray(cur.skills) ? cur.skills.slice() : []; if (e.target.checked) { if (!arr.includes(s) && arr.length < max) arr.push(s) } else { const i = arr.indexOf(s); if (i >= 0) arr.splice(i, 1) } cur.skills = arr; next[idx] = cur as FeatureChoice; data.onChange?.({ featureChoices: next }) }} /><span style={{ fontSize: 12 }}>{s}</span></label>) })}
+                          </div>
+                        </div>
+                      )}
+                      {c.kind === 'other' && (
+                        <label style={{ display: 'grid', gap: 6 }}>
+                          <span>Details</span>
+                          <input value={(c as any).text || ''} onChange={(e) => { const next = [...(data.featureChoices || [])]; next[idx] = { ...(c as any), text: e.target.value } as FeatureChoice; data.onChange?.({ featureChoices: next }) }} placeholder="Describe the choice" style={inp} />
+                        </label>
+                      )}
                     </div>
-                  )}
-
-                  {c.kind === 'other' && (
-                    <label style={{ display: 'grid', gap: 6 }}>
-                      <span>Details</span>
-                      <input
-                        value={(c as any).text || ''}
-                        onChange={(e) => {
-                          const next = [...(data.featureChoices || [])]
-                          next[idx] = { ...(c as any), text: e.target.value } as FeatureChoice
-                          data.onChange?.({ featureChoices: next })
-                        }}
-                        placeholder="Describe the choice"
-                        style={inp}
-                      />
-                    </label>
-                  )}
+                  ))}
                 </div>
-              ))}
-            </div>
-          </div>
-        )}
-        {data.type === 'subclass' && (
-          <div style={{ display: 'grid', gap: 6, fontSize: 12, color: '#475569' }}>
-            <span>Subclass</span>
-            <input
-              value={data.subclass || ''}
-              onChange={(e) => data.onChange?.({ subclass: e.target.value })}
-              placeholder="Champion / Battle Master / Arcane Trickster …"
-              style={inp}
-            />
-          </div>
-        )}
-  {/* Notes removed per request; Tags/Checklist removed */}
-  </>
+              </div>
+            )}
+            {data.type === 'subclass' && (
+              <div style={{ display: 'grid', gap: 6, fontSize: 12, color: '#475569' }}>
+                <span>Subclass</span>
+                <input value={data.subclass || ''} onChange={(e) => data.onChange?.({ subclass: e.target.value })} placeholder="Champion / Battle Master / Arcane Trickster …" style={inp} />
+              </div>
+            )}
+          </>
         )}
       </PanelBox>
-      {data.onApply || data.onChange ? null : null}
       {data.onAddChild ? (
         <div style={{ position: 'absolute', right: -10, top: '50%', transform: 'translateY(-50%)', zIndex: 9 }}>
           <details className="nodrag nopan" style={{ position: 'relative' }}>
-            <summary
-              role="button"
-              style={{ listStyle: 'none', width: 24, height: 24, borderRadius: 999, border: '1px solid #e2e8f0', background: '#fff', cursor: 'pointer', color: '#0f172a', lineHeight: '22px', textAlign: 'center', boxShadow: '0 1px 2px rgba(0,0,0,0.06)' }}
-              onPointerDown={(e) => { e.stopPropagation() }}
-              onMouseDown={(e) => { e.stopPropagation() }}
-              onClick={(e) => { e.stopPropagation() }}
-              title="Add and connect a new step"
-            >+</summary>
-            <div
-              style={{ position: 'absolute', left: 28, top: '50%', transform: 'translateY(-50%)', display: 'flex', gap: 8, background: 'white', border: '1px solid #e2e8f0', borderRadius: 999, padding: '4px 8px', boxShadow: '0 6px 20px rgba(0,0,0,0.08)' }}
-              onClick={(e) => e.stopPropagation()}
-            >
+            <summary role="button" style={{ listStyle: 'none', width: 24, height: 24, borderRadius: 999, border: '1px solid #e2e8f0', background: '#fff', cursor: 'pointer', color: '#0f172a', lineHeight: '22px', textAlign: 'center', boxShadow: '0 1px 2px rgba(0,0,0,0.06)' }} onPointerDown={(e) => { e.stopPropagation() }} onMouseDown={(e) => { e.stopPropagation() }} onClick={(e) => { e.stopPropagation() }} title="Add and connect a new step">+</summary>
+            <div style={{ position: 'absolute', left: 28, top: '50%', transform: 'translateY(-50%)', display: 'flex', gap: 8, background: 'white', border: '1px solid #e2e8f0', borderRadius: 999, padding: '4px 8px', boxShadow: '0 6px 20px rgba(0,0,0,0.08)' }} onClick={(e) => e.stopPropagation()}>
               {(['class','feat','asi','bundle','subclass','note'] as StepType[]).map((k) => (
-                <button
-                  key={k}
-                  className="nodrag nopan"
-                  style={{ ...btn, padding: '4px 8px' }}
-                  onClick={(e) => {
-                    e.preventDefault(); e.stopPropagation()
-                    data.onAddChild?.(k)
-                    const dtl = (e.currentTarget as HTMLElement).closest('details') as HTMLDetailsElement | null
-                    if (dtl && dtl.hasAttribute('open')) dtl.removeAttribute('open')
-                  }}
-                  onPointerDown={(e) => { e.stopPropagation() }}
-                  onMouseDown={(e) => { e.stopPropagation() }}
-                >{k}</button>
+                <button key={k} className="nodrag nopan" style={{ ...btn, padding: '4px 8px' }} onClick={(e) => { e.preventDefault(); e.stopPropagation(); data.onAddChild?.(k); const dtl = (e.currentTarget as HTMLElement).closest('details') as HTMLDetailsElement | null; if (dtl && dtl.hasAttribute('open')) dtl.removeAttribute('open') }} onPointerDown={(e) => { e.stopPropagation() }} onMouseDown={(e) => { e.stopPropagation() }}>{k}</button>
               ))}
             </div>
           </details>
         </div>
       ) : null}
-  <Handle type="source" position={Position.Right} />
-  </div>
+      <Handle type="source" position={Position.Right} />
+    </div>
   )
 }
 
@@ -1120,7 +845,8 @@ function buildPlanFromRoot(nodes: any[], edges: any[], rootId: string) {
     const lvl = Number(n.data?.level || 0)
     if (!lvl) continue
     const cur = byLevel.get(lvl) || { level: lvl, feats: [] as string[], featureChoices: [] as any[] }
-    if (n.data?.className) cur.className = n.data.className
+  if (n.data?.className) cur.className = n.data.className
+  if (n.data?.future) cur.future = true
     const feats: string[] = [
       ...(Array.isArray(n.data?.feats) ? n.data.feats.filter((x: any) => !!x) : []),
       ...(n.data?.featName ? [n.data.featName] : []),
@@ -1138,7 +864,7 @@ function buildPlanFromRoot(nodes: any[], edges: any[], rootId: string) {
       for (const e of incomingChoiceEdges) {
         const src = idToNode.get(e.source)
         if (!src || src.type !== 'progressStep') continue
-        if (src.data?.type === 'bundle' && Array.isArray(src.data?.featureChoices)) {
+  if (src.data?.type === 'bundle' && Array.isArray(src.data?.featureChoices)) {
           cur.featureChoices = [...(cur.featureChoices || []), ...src.data.featureChoices]
         } else if (src.data?.type === 'asi') {
           // Prefer explicit asi string; else build from tokens
@@ -1146,7 +872,7 @@ function buildPlanFromRoot(nodes: any[], edges: any[], rootId: string) {
           if (!cur.asi && asiStr) cur.asi = asiStr
           if (!cur.ability1 && src.data.ability1) cur.ability1 = src.data.ability1
           if (!cur.ability2 && src.data.ability2) cur.ability2 = src.data.ability2
-        } else if (src.data?.type === 'subclass') {
+  } else if (src.data?.type === 'subclass') {
           if (!cur.subclass) cur.subclass = src.data.subclass || ''
         }
       }

@@ -11,7 +11,8 @@ function RulesButton() {
   const { setOpen } = useRules()
   return (
     <button aria-label="Open rules" onClick={() => setOpen(true)} style={toggleBtn()}>
-      ⚙️ Rules
+      {/* Hamburger icon (three horizontal lines) */}
+      <span style={{ fontSize: 18, lineHeight: '16px', display: 'block' }}>☰</span>
     </button>
   )
 }
@@ -76,9 +77,6 @@ export function App() {
               <button onClick={() => setTab('combat')} style={btn(tab === 'combat')}>Combat Tracker</button>
               <button onClick={() => setTab('sim')} style={btn(tab === 'sim')}>Encounter Simulator</button>
             </nav>
-            <button aria-label="Toggle theme" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} style={toggleBtn()}>
-              {theme === 'dark' ? '🌙 Dark' : '☀️ Light'}
-            </button>
             <RulesButton />
           </div>
         </div>
@@ -99,7 +97,7 @@ export function App() {
           <EncounterSimulator />
         )}
       </main>
-      <RulesDrawer />
+  <RulesDrawer theme={theme} setTheme={setTheme} activeClassIds={(character?.classes||[]).map(c=>c.klass.id)} />
     </div>
     </RulesProvider>
   )

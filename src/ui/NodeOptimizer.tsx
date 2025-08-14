@@ -1400,11 +1400,16 @@ export function NodeOptimizer(props: { character?: BuilderState; derived?: any }
 
   <div style={{ display: 'grid', gap: 12, overflowY: 'auto', overflowX: 'hidden', paddingRight: 8 }}>
         <section style={card}>
-          <div style={{ padding: 12, borderBottom: '1px solid #e2e8f0', fontWeight: 600 }}>History</div>
-          <div style={{ padding: 12, display: 'flex', gap: 8 }}>
-            <button onClick={undo} style={btn}>↶ Undo</button>
-            <button onClick={redo} style={btn}>↷ Redo</button>
+          <div style={{ padding: 12, borderBottom: '1px solid #e2e8f0', fontWeight: 600 }}>Add Nodes</div>
+          <div style={{ padding: 12, display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+            <button onClick={() => addNode('attack')} style={btn}>+ Attack</button>
+            <button onClick={() => addNode('feats')} style={btn}>+ Feats</button>
+            <button onClick={() => addNode('features')} style={btn}>+ Features</button>
+            <button onClick={() => addNode('spells')} style={btn}>+ Spells</button>
+            <button onClick={() => addNode('traits' as any)} style={btn}>+ Traits</button>
+            <button onClick={() => addNode('output')} style={btn}>+ Output</button>
           </div>
+          <div style={{ padding: '0 12px 12px', fontSize: 12, color: '#64748b' }}>Typical wiring: Attack / Feats / Features / Traits / Spells → Output. Fighting Style is configured inside Features. Traits adds racial effects (e.g., Savage Attacks).</div>
         </section>
         <section style={card}>
           <div style={{ padding: 12, borderBottom: '1px solid #e2e8f0', fontWeight: 600 }}>Character Stats</div>
@@ -1434,7 +1439,6 @@ export function NodeOptimizer(props: { character?: BuilderState; derived?: any }
                 <strong>Base Attacks</strong> <span style={{ marginLeft: 4 }}>{fighterAttacksPerRound(effLevel)}</span>
               </div>
             </div>
-            <label style={{ ...row, fontSize: 12 }}><input type="checkbox" checked={useVersatile} onChange={(e) => setUseVersatile(e.target.checked)} /> Use versatile die</label>
           </div>
         </section>
         <section style={card}>
@@ -1531,18 +1535,7 @@ export function NodeOptimizer(props: { character?: BuilderState; derived?: any }
           </div>
         </section>
 
-        <section style={card}>
-          <div style={{ padding: 12, borderBottom: '1px solid #e2e8f0', fontWeight: 600 }}>Add Nodes</div>
-          <div style={{ padding: 12, display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
-            <button onClick={() => addNode('attack')} style={btn}>+ Attack</button>
-            <button onClick={() => addNode('feats')} style={btn}>+ Feats</button>
-            <button onClick={() => addNode('features')} style={btn}>+ Features</button>
-            <button onClick={() => addNode('spells')} style={btn}>+ Spells</button>
-            <button onClick={() => addNode('traits' as any)} style={btn}>+ Traits</button>
-            <button onClick={() => addNode('output')} style={btn}>+ Output</button>
-          </div>
-          <div style={{ padding: '0 12px 12px', fontSize: 12, color: '#64748b' }}>Typical wiring: Attack / Feats / Features / Traits / Spells → Output. Fighting Style is configured inside Features. Traits adds racial effects (e.g., Savage Attacks).</div>
-        </section>
+  {/* History section removed per request */}
 
       </div>
     </div>

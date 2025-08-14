@@ -1,7 +1,10 @@
 import React, { useMemo, useState, useEffect, useRef } from 'react'
 import { Plus, Info, Redo2, Scale, Settings2, Shield, Sparkles, Sword, Undo2, List, Columns, LayoutGrid } from 'lucide-react'
+import { useRules } from './RulesContext.tsx'
 // Externalized shared types and data
 import type { AbilityKey, Background, Spell, MagicSchool, DamageType, Equipment, Feat } from '../data/types'
+import { CLASSES, Klass, Subclass } from '../data/classes'
+import { RACES, Race } from '../data/races'
 import { SKILLS } from '../data/skills'
 import { BACKGROUNDS } from '../data/backgrounds'
 import { SPELLS, SPELL_META, ALL_SPELL_SCHOOLS, ALL_DAMAGE_TYPES, ALL_SAVE_ABILITIES } from '../data/spells'
@@ -10,532 +13,229 @@ import { FEATS } from '../data/feats'
 
 // ---------------- Demo Data (typed) ----------------
 
-// AbilityKey now imported from ../data/types
-
-type Race = {
-  id: string
-  name: string
-  asis: Partial<Record<AbilityKey, number>>
-  speed: number
-  traits: Array<{ id: string; name: string; text: string }>
+// Reconstruct a per-level sequence array from aggregated class levels and the chronological class id list.
+// classes: current aggregated class objects (some with level >1)
+// order: chronological log of class ids for each level-up in the order buttons were pressed
+// Returns an array where each element is a level-up entry { klass, level:1, subclass? } preserving original subclass refs.
+function reconstructSequence(classes: Array<{ klass: Klass; level: number; subclass?: Subclass }>, order: string[]) {
+  if (!order.length) return classes
+  // Build counts to ensure we don't exceed current levels
+  const levelTally: Record<string, number> = {}
+  const maxLevels: Record<string, number> = {}
+  classes.forEach(c => { maxLevels[c.klass.id] = c.level })
+  const out: Array<{ klass: Klass; level: number; subclass?: Subclass }> = []
+  for (const id of order) {
+    const max = maxLevels[id]
+    if (!max) continue // class removed
+    const current = (levelTally[id] || 0) + 1
+    if (current > max) continue // extra historical entry beyond present level count
+    levelTally[id] = current
+    const ref = classes.find(c => c.klass.id === id)
+    if (ref) out.push({ klass: ref.klass, level: 1, subclass: ref.subclass })
+  }
+  // If counts don't add up (e.g., new class added externally), append remaining levels in original class order
+  classes.forEach(c => {
+    const need = c.level - (levelTally[c.klass.id] || 0)
+    for (let i = 0; i < need; i++) out.push({ klass: c.klass, level: 1, subclass: c.subclass })
+  })
+  return out
 }
 
-type Subclass = {
-  id: string
-  name: string
-  unlockLevel: number
-  grants?: { subactions?: string[] }
+// Lightweight custom Armor icon (breastplate) for items of type 'armor'
+const ArmorIcon: React.FC<{ size?: number; color?: string }> = ({ size = 16, color = 'currentColor' }) => (
+  <svg width={size} height={size} viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M2 2h12v2c0 3.5-2.5 7-6 10C4.5 11 2 7.5 2 4V2z" stroke={color} strokeWidth="1.5" fill="none" />
+  </svg>
+)
+
+// (progression table injected within Builder component return)
+// Added optional future flag: future levels are displayed (greyed) but excluded from cumulative stat math.
+function renderProgressionTable(classes: Array<{ klass: Klass; level: number; subclass?: Subclass; future?: boolean }>, fullscreen = false) {
+  // Helper data
+  const profBonus = (lvl: number) => 2 + Math.floor((lvl - 1) / 4)
+  const rageByLevel = [2, 3, 4, 4, 5, 5, 6, 6, 6, 6, 7, 7, 7, 8, 8, 8, 8, 8, 8, 'unlimited']
+  const rageDmgByLevel = [2,2,2,2,2,2,2,2,3,3,3,3,3,3,3,4,4,4,4,4]
+
+  // Full caster slot progression (effective caster level 1..20)
+  const SHARED_SLOTS: number[][] = [
+    [2], [3], [4,2], [4,3], [4,3,2], [4,3,3], [4,3,3,1], [4,3,3,2], [4,3,3,3,1], [4,3,3,3,2],
+    [4,3,3,3,2,1], [4,3,3,3,2,1], [4,3,3,3,2,1,1], [4,3,3,3,2,1,1], [4,3,3,3,2,1,1,1], [4,3,3,3,2,1,1,1],
+    [4,3,3,3,2,1,1,1,1], [4,3,3,3,2,1,1,1,1], [4,3,3,3,2,1,1,1,1], [4,3,3,3,2,1,1,1,1]
+  ]
+  // Pact (Warlock) slots by warlock class level (slot count, slot level)
+  const PACT_SLOTS: Array<{ slots: number; level: number }> = [
+    { slots:1, level:1 }, { slots:2, level:1 }, { slots:2, level:2 }, { slots:2, level:2 }, { slots:2, level:3 },
+    { slots:2, level:3 }, { slots:2, level:4 }, { slots:2, level:4 }, { slots:2, level:5 }, { slots:2, level:5 },
+    { slots:3, level:5 }, { slots:3, level:5 }, { slots:3, level:5 }, { slots:3, level:5 }, { slots:3, level:5 },
+    { slots:3, level:5 }, { slots:4, level:5 }, { slots:4, level:5 }, { slots:4, level:5 }, { slots:4, level:5 },
+  ]
+
+  const FULL_CASTERS = new Set(['wizard','sorcerer','cleric','druid','bard'])
+  const HALF_CASTERS = new Set(['paladin','ranger'])
+  // THIRD casters (if subclasses implemented later)
+  const THIRD_SUBCLASS_IDS = new Set(['eldritch-knight','arcane-trickster'])
+  const PACT_CASTER = 'warlock'
+
+  // Determine if classes array represents an explicit per-level sequence (every entry level ===1)
+  const totalLevels = classes.reduce((s,c)=>s+(c.level||0),0)
+  const sequenceMode = classes.length === totalLevels && classes.every(c=>c.level===1)
+
+  let charLevel = 0
+  const rows: Array<{ charLevel: number; klass: Klass; classLevel: number; subclass?: Subclass; features: Array<{ name: string; text: string }>; future?: boolean }> = []
+  if (sequenceMode) {
+    const classCount: Record<string, number> = {}
+    classes.forEach(c => {
+      charLevel += 1
+      classCount[c.klass.id] = (classCount[c.klass.id]||0)+1
+      const classLevel = classCount[c.klass.id]
+      const feats = (c.klass.featuresByLevel?.[classLevel] || []).slice()
+      if (c.subclass && classLevel === c.subclass.unlockLevel) {
+        feats.push({ name: `${c.subclass.name} Features`, text: 'Subclass features gained.' })
+      }
+      rows.push({ charLevel, klass: c.klass, classLevel, subclass: c.subclass, features: feats, future: c.future })
+    })
+  } else {
+    // Preserve original order of classes array, do not sort
+  classes.forEach(c => {
+      for (let lvl = 1; lvl <= c.level; lvl++) {
+        charLevel += 1
+        const feats = (c.klass.featuresByLevel?.[lvl] || []).slice()
+        if (c.subclass && lvl === c.subclass.unlockLevel) {
+          feats.push({ name: `${c.subclass.name} Features`, text: 'Subclass features gained.' })
+        }
+    rows.push({ charLevel, klass: c.klass, classLevel: lvl, subclass: c.subclass, features: feats, future: c.future })
+      }
+    })
+  }
+
+  if (!rows.length) return <div style={{ fontSize: 12, color: '#64748b' }}>No levels yet.</div>
+
+  // Precompute cumulative class level tallies for spellcasting math at each row
+  const cumulative = rows.map((_r, idx) => {
+    // Only count non-future rows up to this point
+    const slice = rows.slice(0, idx + 1).filter(r => !r.future)
+    let full = 0, half = 0, third = 0, warlock = 0
+    slice.forEach(r => {
+      if (FULL_CASTERS.has(r.klass.id)) full += 1
+      else if (HALF_CASTERS.has(r.klass.id)) half += 1
+      else if (r.klass.id === PACT_CASTER) warlock += 1
+      else if (r.subclass && THIRD_SUBCLASS_IDS.has(r.subclass.id)) third += 1
+    })
+    const effective = full + Math.floor(half / 2) + Math.floor(third / 3)
+    return { full, half, third, warlock, effective }
+  })
+
+  const formatShared = (slots: number[]) => slots.map((n,i)=>`${i+1}:${n}`).join(' ') // e.g. "1:4 2:3 3:3 4:2"
+
+  const hasBarbarian = rows.some(r => r.klass.id === 'barbarian')
+
+  return (
+    <div style={{ overflowX: 'auto', maxHeight: fullscreen ? undefined : 360, overflowY: fullscreen ? undefined : 'auto', border: '1px solid var(--muted-border)', borderRadius: 8 }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+        <thead>
+          <tr style={{ background: 'var(--card-bg-alt, #f1f5f9)' }}>
+            <th style={progTh}>Char Lvl</th>
+            <th style={progTh}>Class</th>
+            <th style={progTh}>Class Lvl</th>
+            <th style={progTh}>Prof Bonus</th>
+            {hasBarbarian && <th style={progTh}>Rage Uses</th>}
+            {hasBarbarian && <th style={progTh}>Rage Dmg</th>}
+            <th style={progTh}>1st</th>
+            <th style={progTh}>2nd</th>
+            <th style={progTh}>3rd</th>
+            <th style={progTh}>4th</th>
+            <th style={progTh}>5th</th>
+            <th style={progTh}>6th</th>
+            <th style={progTh}>7th</th>
+            <th style={progTh}>8th</th>
+            <th style={progTh}>9th</th>
+            <th style={progTh}>Pact</th>
+            <th style={progTh}>Features Gained / Notes</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r, i) => {
+            const cum = cumulative[i]
+            const sharedSlots = cum.effective > 0 ? SHARED_SLOTS[Math.min(cum.effective, 20) - 1] : undefined
+            const pact = cum.warlock > 0 ? PACT_SLOTS[Math.min(cum.warlock, 20) - 1] : undefined
+            return (
+              <tr key={r.charLevel} style={{ borderTop: '1px solid var(--muted-border)', opacity: r.future ? 0.5 : 1, background: r.future ? 'rgba(148,163,184,0.12)' : undefined }} title={r.future ? 'Planned (future) level' : undefined}>
+                <td style={progTd}>{r.charLevel}</td>
+                <td style={progTd}>{r.klass.name}</td>
+                <td style={progTd}>{r.classLevel}</td>
+                <td style={progTd}>+{profBonus(r.charLevel)}</td>
+                {hasBarbarian && <td style={progTd}>{r.klass.id === 'barbarian' ? (rageByLevel[r.classLevel - 1] ?? '—') : '—'}</td>}
+                {hasBarbarian && <td style={progTd}>{r.klass.id === 'barbarian' ? `+${rageDmgByLevel[r.classLevel - 1] ?? 2}` : '—'}</td>}
+                {Array.from({ length: 9 }).map((_, si) => (
+                  <td key={si} style={progTd}>{sharedSlots && sharedSlots[si] ? sharedSlots[si] : '—'}</td>
+                ))}
+                <td style={progTd}>{pact ? `${pact.slots}@${pact.level}` : '—'}</td>
+                <td style={{ ...progTd, textAlign: 'left' }}>
+                  {r.features.length === 0 ? <span style={{ opacity: 0.5 }}>—</span> : (
+                    <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'grid', gap: 2 }}>
+                      {r.features.map(f => (
+                        <li key={f.name} style={{ lineHeight: 1.25 }}>
+                          <strong>{f.name}</strong>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+    </div>
+  )
 }
+// ---------------- Class Feature Decision Specs ----------------
+interface ClassFeatureDecisionSpecOption { id: string; name: string; text: string }
+interface ClassFeatureDecisionSpec { id: string; name: string; level: number; picks: number; options: ClassFeatureDecisionSpecOption[] }
 
-type Klass = {
-  id: string
-  name: string
-  hitDie: number
-  armor: string[]
-  weapons: string[]
-  grants?: { subactions?: string[] }
-  level1?: Array<{ name: string; text: string }>
-  // Optional richer feature map by level; if provided, render all features up to the class level
-  featuresByLevel?: Record<number, Array<{ name: string; text: string }>>
-  acFormula?: (a: { armor: string | 'none'; dexMod: number; conMod: number }) => number | undefined
-  saves?: AbilityKey[]
-  subclasses?: Subclass[]
-}
-
-// Feats and Equipment now imported from ../data
-
-const RACES: Race[] = [
-  { id: 'human', name: 'Human (Base)', asis: { str: 1, dex: 1, con: 1, int: 1, wis: 1, cha: 1 }, speed: 30, traits: [ { id: 'versatile', name: 'Versatile', text: '+1 to all ability scores.' } ] },
-  { id: 'human-variant', name: 'Human (Variant)', asis: { str: 1, dex: 1 }, speed: 30, traits: [ { id: 'adaptable', name: 'Adaptable', text: '+1 to two ability scores (demo variant).' } ] },
-  // Elves
-  { id: 'elf-wood', name: 'Elf (Wood)', asis: { dex: 2, wis: 1 }, speed: 35, traits: [
-    { id: 'darkvision', name: 'Darkvision', text: 'See in dim light 60 ft.' },
-    { id: 'keen', name: 'Keen Senses', text: 'Proficiency in Perception.' },
-    { id: 'fey-ancestry', name: 'Fey Ancestry', text: 'Advantage on saves against being charmed; magic can’t put you to sleep.' },
-  ] },
-  { id: 'elf-high', name: 'Elf (High)', asis: { dex: 2, int: 1 }, speed: 30, traits: [
-    { id: 'darkvision', name: 'Darkvision', text: 'See in dim light 60 ft.' },
-    { id: 'keen', name: 'Keen Senses', text: 'Proficiency in Perception.' },
-    { id: 'fey-ancestry', name: 'Fey Ancestry', text: 'Advantage on saves against being charmed; magic can’t put you to sleep.' },
-  ] },
-  // Dwarves
-  { id: 'dwarf-hill', name: 'Dwarf (Hill)', asis: { con: 2, wis: 1 }, speed: 25, traits: [
-    { id: 'darkvision', name: 'Darkvision', text: 'See in dim light 60 ft.' },
-    { id: 'dwarven-resilience', name: 'Dwarven Resilience', text: 'Advantage on saving throws against poison, and resistance to poison damage (demo flavor).' },
-  ] },
-  { id: 'dwarf-mountain', name: 'Dwarf (Mountain)', asis: { con: 2, str: 2 }, speed: 25, traits: [
-    { id: 'darkvision', name: 'Darkvision', text: 'See in dim light 60 ft.' },
-    { id: 'dwarven-resilience', name: 'Dwarven Resilience', text: 'Advantage on saving throws against poison, and resistance to poison damage (demo flavor).' },
-  ] },
-  { id: 'halfling-lightfoot', name: 'Halfling (Lightfoot)', asis: { dex: 2, cha: 1 }, speed: 25, traits: [ { id: 'lucky', name: 'Lucky', text: 'Reroll 1s on attack, ability, or save rolls (demo flavor).' }, { id: 'brave', name: 'Brave', text: 'Advantage on saves vs. fear.' } ] },
-  { id: 'halfling-stout', name: 'Halfling (Stout)', asis: { dex: 2, con: 1 }, speed: 25, traits: [ { id: 'lucky', name: 'Lucky', text: 'Reroll 1s on attack, ability, or save rolls (demo flavor).' }, { id: 'brave', name: 'Brave', text: 'Advantage on saves vs. fear.' }, { id: 'stout-resilience', name: 'Stout Resilience', text: 'Advantage on saves vs. poison (demo flavor).' } ] },
-  { id: 'tiefling', name: 'Tiefling', asis: { cha: 2, int: 1 }, speed: 30, traits: [ { id: 'darkvision', name: 'Darkvision', text: 'See in dim light 60 ft.' }, { id: 'hellish-resistance', name: 'Hellish Resistance', text: 'Resistance to fire damage.' } ] },
-  { id: 'dragonborn', name: 'Dragonborn', asis: { str: 2, cha: 1 }, speed: 30, traits: [ { id: 'draconic-ancestry', name: 'Draconic Ancestry', text: 'Breath weapon and damage resistance depend on ancestry.' }, { id: 'breath-weapon', name: 'Breath Weapon', text: 'Exhale destructive energy (demo flavor).' }, { id: 'damage-resistance', name: 'Damage Resistance', text: 'Resistance based on ancestry.' } ] },
-  // Dragonborn variants (sub-race style entries)
-  { id: 'dragonborn-black', name: 'Dragonborn (Black)', asis: { str: 2, cha: 1 }, speed: 30, traits: [
-    { id: 'draconic-ancestry-black', name: 'Draconic Ancestry — Black', text: 'Acid breath; resistance to acid (demo).' },
-    { id: 'breath-weapon', name: 'Breath Weapon', text: 'Exhale destructive energy (demo flavor).' },
-    { id: 'damage-resistance', name: 'Damage Resistance', text: 'Resistance to acid (demo).' },
-  ] },
-  { id: 'dragonborn-blue', name: 'Dragonborn (Blue)', asis: { str: 2, cha: 1 }, speed: 30, traits: [
-    { id: 'draconic-ancestry-blue', name: 'Draconic Ancestry — Blue', text: 'Lightning breath; resistance to lightning (demo).' },
-    { id: 'breath-weapon', name: 'Breath Weapon', text: 'Exhale destructive energy (demo flavor).' },
-    { id: 'damage-resistance', name: 'Damage Resistance', text: 'Resistance to lightning (demo).' },
-  ] },
-  { id: 'dragonborn-brass', name: 'Dragonborn (Brass)', asis: { str: 2, cha: 1 }, speed: 30, traits: [
-    { id: 'draconic-ancestry-brass', name: 'Draconic Ancestry — Brass', text: 'Fire breath; resistance to fire (demo).' },
-    { id: 'breath-weapon', name: 'Breath Weapon', text: 'Exhale destructive energy (demo flavor).' },
-    { id: 'damage-resistance', name: 'Damage Resistance', text: 'Resistance to fire (demo).' },
-  ] },
-  { id: 'dragonborn-bronze', name: 'Dragonborn (Bronze)', asis: { str: 2, cha: 1 }, speed: 30, traits: [
-    { id: 'draconic-ancestry-bronze', name: 'Draconic Ancestry — Bronze', text: 'Lightning breath; resistance to lightning (demo).' },
-    { id: 'breath-weapon', name: 'Breath Weapon', text: 'Exhale destructive energy (demo flavor).' },
-    { id: 'damage-resistance', name: 'Damage Resistance', text: 'Resistance to lightning (demo).' },
-  ] },
-  { id: 'dragonborn-copper', name: 'Dragonborn (Copper)', asis: { str: 2, cha: 1 }, speed: 30, traits: [
-    { id: 'draconic-ancestry-copper', name: 'Draconic Ancestry — Copper', text: 'Acid breath; resistance to acid (demo).' },
-    { id: 'breath-weapon', name: 'Breath Weapon', text: 'Exhale destructive energy (demo flavor).' },
-    { id: 'damage-resistance', name: 'Damage Resistance', text: 'Resistance to acid (demo).' },
-  ] },
-  { id: 'dragonborn-gold', name: 'Dragonborn (Gold)', asis: { str: 2, cha: 1 }, speed: 30, traits: [
-    { id: 'draconic-ancestry-gold', name: 'Draconic Ancestry — Gold', text: 'Fire breath; resistance to fire (demo).' },
-    { id: 'breath-weapon', name: 'Breath Weapon', text: 'Exhale destructive energy (demo flavor).' },
-    { id: 'damage-resistance', name: 'Damage Resistance', text: 'Resistance to fire (demo).' },
-  ] },
-  { id: 'dragonborn-green', name: 'Dragonborn (Green)', asis: { str: 2, cha: 1 }, speed: 30, traits: [
-    { id: 'draconic-ancestry-green', name: 'Draconic Ancestry — Green', text: 'Poison breath; resistance to poison (demo).' },
-    { id: 'breath-weapon', name: 'Breath Weapon', text: 'Exhale destructive energy (demo flavor).' },
-    { id: 'damage-resistance', name: 'Damage Resistance', text: 'Resistance to poison (demo).' },
-  ] },
-  { id: 'dragonborn-red', name: 'Dragonborn (Red)', asis: { str: 2, cha: 1 }, speed: 30, traits: [
-    { id: 'draconic-ancestry-red', name: 'Draconic Ancestry — Red', text: 'Fire breath; resistance to fire (demo).' },
-    { id: 'breath-weapon', name: 'Breath Weapon', text: 'Exhale destructive energy (demo flavor).' },
-    { id: 'damage-resistance', name: 'Damage Resistance', text: 'Resistance to fire (demo).' },
-  ] },
-  { id: 'dragonborn-silver', name: 'Dragonborn (Silver)', asis: { str: 2, cha: 1 }, speed: 30, traits: [
-    { id: 'draconic-ancestry-silver', name: 'Draconic Ancestry — Silver', text: 'Cold breath; resistance to cold (demo).' },
-    { id: 'breath-weapon', name: 'Breath Weapon', text: 'Exhale destructive energy (demo flavor).' },
-    { id: 'damage-resistance', name: 'Damage Resistance', text: 'Resistance to cold (demo).' },
-  ] },
-  { id: 'dragonborn-white', name: 'Dragonborn (White)', asis: { str: 2, cha: 1 }, speed: 30, traits: [
-    { id: 'draconic-ancestry-white', name: 'Draconic Ancestry — White', text: 'Cold breath; resistance to cold (demo).' },
-    { id: 'breath-weapon', name: 'Breath Weapon', text: 'Exhale destructive energy (demo flavor).' },
-    { id: 'damage-resistance', name: 'Damage Resistance', text: 'Resistance to cold (demo).' },
-  ] },
-  { id: 'gnome', name: 'Gnome', asis: { int: 2 }, speed: 25, traits: [ { id: 'darkvision', name: 'Darkvision', text: 'See in dim light 60 ft.' }, { id: 'gnome-cunning', name: 'Gnome Cunning', text: 'Advantage on INT, WIS, and CHA saves against magic.' } ] },
-  { id: 'half-orc', name: 'Half-Orc', asis: { str: 2, con: 1 }, speed: 30, traits: [ { id: 'darkvision', name: 'Darkvision', text: 'See in dim light 60 ft.' }, { id: 'menacing', name: 'Menacing', text: 'Proficiency in Intimidation.' }, { id: 'relentless-endurance', name: 'Relentless Endurance', text: 'When reduced to 0 HP but not killed, drop to 1 HP instead (1/long rest).' }, { id: 'savage-attacks', name: 'Savage Attacks', text: 'Extra weapon die on a crit (demo flavor).' } ] },
-]
-
-const CLASSES: Klass[] = [
-  {
-    id: 'barbarian',
-    name: 'Barbarian',
-    hitDie: 12,
-    armor: ['light', 'medium', 'shields'],
-    weapons: ['simple', 'martial'],
-    grants: { subactions: ['Rage', 'Reckless Attack'] },
-    featuresByLevel: {
-      1: [
-        { name: 'Rage', text: '+2 damage, advantage on STR checks; uses/long rest.' },
-        { name: 'Unarmored Defense', text: 'AC = 10 + DEX + CON when no armor; shield allowed.' },
-      ],
-      2: [
-        { name: 'Reckless Attack', text: 'Gain advantage on melee STR attacks this turn; attacks against you have advantage until your next turn.' },
-        { name: 'Danger Sense', text: 'Advantage on DEX saves vs. effects you can see.' },
-      ],
-      3: [
-        { name: 'Primal Path', text: 'Choose a subclass and gain its level 3 features.' },
-      ],
-      4: [
-        { name: 'Ability Score Improvement', text: '+2 to one ability or +1 to two abilities (demo text).' },
-      ],
-      5: [
-        { name: 'Extra Attack', text: 'Attack twice, instead of once, whenever you take the Attack action.' },
-        { name: 'Fast Movement', text: 'Your speed increases by 10 ft. while not wearing heavy armor.' },
-      ],
-    },
-    acFormula: (a) => (a.armor === 'none' ? 10 + a.dexMod + a.conMod : undefined),
-    saves: ['str', 'con'],
-    subclasses: [
-      { id: 'berserker', name: 'Path of the Berserker', unlockLevel: 3, grants: { subactions: ['Frenzy'] } },
-    ],
-  },
-  {
-    id: 'ranger',
-    name: 'Ranger',
-    hitDie: 10,
-    armor: ['light', 'medium', 'shields'],
-    weapons: ['simple', 'martial'],
-    grants: { subactions: ['Cast Spell'] },
-    featuresByLevel: {
-      1: [
-        { name: 'Favored Enemy', text: 'You have significant experience studying, tracking, and hunting a certain type of enemy.' },
-        { name: 'Natural Explorer', text: 'You are particularly familiar with one type of natural environment and adept at traveling and surviving in such regions.' },
-      ],
-      2: [
-        { name: 'Fighting Style', text: 'Choose a combat style to hone your martial prowess.' },
-        { name: 'Spellcasting', text: 'WIS‑based spellcasting (half‑caster). Gains 1st‑level spells at level 2.' },
-      ],
-      3: [
-        { name: 'Ranger Archetype', text: 'Choose an archetype and gain its features.' },
-      ],
-      4: [
-        { name: 'Ability Score Improvement', text: '+2 to one ability or +1 to two abilities (demo text).' },
-      ],
-      5: [
-        { name: 'Extra Attack', text: 'Attack twice, instead of once, whenever you take the Attack action.' },
-      ],
-    },
-    saves: ['str', 'dex'],
-    subclasses: [
-      { id: 'hunter', name: 'Hunter', unlockLevel: 3 },
-      { id: 'beast-master', name: 'Beast Master', unlockLevel: 3 },
-    ],
-  },
-  {
-    id: 'rogue',
-    name: 'Rogue',
-    hitDie: 8,
-    armor: ['light'],
-    weapons: ['simple', 'hand-crossbow', 'longsword', 'rapier', 'shortsword'],
-    featuresByLevel: {
-      1: [
-        { name: 'Sneak Attack', text: 'Deal extra damage once per turn when you have advantage or an ally is adjacent.' },
-        { name: 'Thieves’ Cant', text: 'Secret mix of dialect, jargon, and code that allows you to hide messages.' },
-        { name: 'Expertise', text: 'Choose two skills; double proficiency bonus for them.' },
-      ],
-      2: [
-        { name: 'Cunning Action', text: 'Dash, Disengage, or Hide as a bonus action.' },
-      ],
-      3: [
-        { name: 'Roguish Archetype', text: 'Choose an archetype and gain its features.' },
-      ],
-      4: [
-        { name: 'Ability Score Improvement', text: '+2 to one ability or +1 to two abilities (demo text).' },
-      ],
-      5: [
-        { name: 'Uncanny Dodge', text: 'Use your reaction to halve the damage from an attacker you can see.' },
-      ],
-    },
-    saves: ['dex', 'int'],
-    subclasses: [
-      { id: 'thief', name: 'Thief', unlockLevel: 3 },
-      { id: 'assassin', name: 'Assassin', unlockLevel: 3 },
-      { id: 'arcane-trickster', name: 'Arcane Trickster', unlockLevel: 3 },
-    ],
-  },
-  {
-    id: 'monk',
-    name: 'Monk',
-    hitDie: 8,
-    armor: [],
-    weapons: ['simple', 'shortswords'],
-    grants: { subactions: ['Flurry of Blows', 'Patient Defense', 'Step of the Wind'] },
-    featuresByLevel: {
-      1: [
-        { name: 'Unarmored Defense', text: 'AC = 10 + DEX + WIS while not wearing armor or a shield.' },
-        { name: 'Martial Arts', text: 'Use DEX for unarmed/monk weapon attacks; bonus unarmed strike.' },
-      ],
-      2: [
-        { name: 'Ki', text: 'Fuel abilities like Flurry of Blows, Patient Defense, Step of the Wind.' },
-        { name: 'Unarmored Movement', text: '+10 ft. movement speed while unarmored.' },
-      ],
-      3: [
-        { name: 'Monastic Tradition', text: 'Choose a subclass (tradition) and gain its level 3 features.' },
-        { name: 'Deflect Missiles', text: 'Reduce ranged weapon damage; catch/throw sometimes.' },
-      ],
-      4: [
-        { name: 'Ability Score Improvement', text: '+2 to one ability or +1 to two abilities (demo text).' },
-        { name: 'Slow Fall', text: 'Reduce falling damage by 5 × monk level.' },
-      ],
-      5: [
-        { name: 'Extra Attack', text: 'Attack twice when you take the Attack action.' },
-        { name: 'Stunning Strike', text: 'On a hit, spend ki to stun a creature that fails a CON save.' },
-      ],
-    },
-    saves: ['str', 'dex'],
-    subclasses: [
-      { id: 'open-hand', name: 'Way of the Open Hand', unlockLevel: 3, grants: { subactions: [] } },
-      { id: 'shadow', name: 'Way of Shadow', unlockLevel: 3, grants: { subactions: [] } },
-    ],
-  },
-  {
-    id: 'paladin',
-    name: 'Paladin',
-    hitDie: 10,
-    armor: ['all', 'shields'],
-    weapons: ['simple', 'martial'],
-    grants: { subactions: ['Divine Smite'] },
-    featuresByLevel: {
-      1: [
-        { name: 'Divine Sense', text: 'Detect celestials, fiends, and undead (limited uses).' },
-        { name: 'Lay on Hands', text: 'Pool of healing equal to 5 × paladin level.' },
-      ],
-      2: [
-        { name: 'Fighting Style', text: 'Choose a combat style for a passive benefit.' },
-        { name: 'Spellcasting', text: 'CHA‑based half‑caster; gains 1st‑level spell slots.' },
-        { name: 'Divine Smite', text: 'Expend a spell slot to deal radiant damage on a hit.' },
-      ],
-      3: [
-        { name: 'Sacred Oath', text: 'Swear an oath (subclass) and gain Channel Divinity options.' },
-      ],
-      4: [
-        { name: 'Ability Score Improvement', text: '+2 to one ability or +1 to two abilities (demo text).' },
-      ],
-      5: [
-        { name: 'Extra Attack', text: 'Attack twice, instead of once, whenever you take the Attack action.' },
-      ],
-    },
-    saves: ['wis', 'cha'],
-    subclasses: [
-      { id: 'oath-devotion', name: 'Oath of Devotion', unlockLevel: 3, grants: { subactions: ['Channel Divinity (Devotion)'] } },
-      { id: 'oath-vengeance', name: 'Oath of Vengeance', unlockLevel: 3, grants: { subactions: ['Channel Divinity (Vengeance)'] } },
-    ],
-  },
-  {
-    id: 'fighter',
-    name: 'Fighter',
-    hitDie: 10,
-    armor: ['all', 'shields'],
-    weapons: ['simple', 'martial'],
-    grants: { subactions: ['Second Wind'] },
-    featuresByLevel: {
-      1: [
-        { name: 'Second Wind', text: '1d10 + level self‑heal, 1/short rest.' },
-        { name: 'Fighting Style', text: 'Choose a combat style for a passive benefit.' },
-      ],
-      2: [
-        { name: 'Action Surge', text: 'Take one additional action on your turn, 1/short rest.' },
-      ],
-      3: [
-        { name: 'Martial Archetype', text: 'Choose a subclass and gain its level 3 features.' },
-      ],
-      4: [
-        { name: 'Ability Score Improvement', text: '+2 to one ability or +1 to two abilities (demo text).' },
-      ],
-      5: [
-        { name: 'Extra Attack', text: 'Attack twice, instead of once, whenever you take the Attack action.' },
-      ],
-    },
-    saves: ['str', 'con'],
-    subclasses: [
-      { id: 'champion', name: 'Champion', unlockLevel: 3, grants: { subactions: ['Improved Critical'] } },
-    ],
-  },
-  {
-    id: 'bard',
-    name: 'Bard',
-    hitDie: 8,
-    armor: ['light'],
-    weapons: ['simple', 'hand crossbows', 'longswords', 'rapiers', 'shortswords'],
-    grants: { subactions: ['Cast Spell', 'Bardic Inspiration'] },
-    featuresByLevel: {
-      1: [
-        { name: 'Spellcasting', text: 'CHA‑based spellcasting. Cantrips & 1st‑level slots.' },
-        { name: 'Bardic Inspiration (d6)', text: 'As a bonus action, give a creature a d6 inspiration die (CHA uses/long rest).' },
-      ],
-      2: [
-        { name: 'Jack of All Trades', text: 'Add half your proficiency bonus to ability checks you are not proficient in.' },
-        { name: 'Song of Rest (d6)', text: 'During a short rest, allies who hear your performance regain extra 1d6 HP.' },
-      ],
-      3: [
-        { name: 'Bard College', text: 'Choose a subclass and gain its level 3 features.' },
-        { name: 'Expertise', text: 'Choose two skills you are proficient in; your proficiency bonus is doubled for them.' },
-      ],
-      4: [
-        { name: 'Ability Score Improvement', text: '+2 to one ability or +1 to two abilities (demo text).' },
-      ],
-      5: [
-        { name: 'Font of Inspiration', text: 'Regain all uses of Bardic Inspiration on a short rest.' },
-      ],
-    },
-    saves: ['dex', 'cha'],
-    subclasses: [
-      { id: 'college-of-lore', name: 'College of Lore', unlockLevel: 3, grants: { subactions: [] } },
-      { id: 'college-of-valor', name: 'College of Valor', unlockLevel: 3, grants: { subactions: [] } },
-    ],
-  },
-  {
-    id: 'cleric',
-    name: 'Cleric',
-    hitDie: 8,
-    armor: ['light', 'medium', 'shields'],
-    weapons: ['simple'],
-    grants: { subactions: ['Cast Spell'] },
-    featuresByLevel: {
-      1: [
-        { name: 'Spellcasting', text: 'WIS‑based spellcasting. Cantrips & 1st‑level slots.' },
-        { name: 'Divine Domain', text: 'Choose a domain (subclass) and gain its level 1 features.' },
-      ],
-      2: [
-        { name: 'Channel Divinity (1/rest)', text: 'Turn Undead; your domain adds an additional Channel Divinity option.' },
-      ],
-      4: [
-        { name: 'Ability Score Improvement', text: '+2 to one ability or +1 to two abilities (demo text).' },
-      ],
-      5: [
-        { name: 'Destroy Undead (CR 1/2)', text: 'When a turned undead of CR 1/2 or lower fails its save, it is destroyed.' },
-        { name: 'Spellcasting Progression', text: 'Access to higher‑level spell slots and prepared spells.' },
-      ],
-    },
-    saves: ['wis', 'cha'],
-    subclasses: [
-      { id: 'life-domain', name: 'Life Domain', unlockLevel: 1, grants: { subactions: ['Channel Divinity: Preserve Life'] } },
-      { id: 'light-domain', name: 'Light Domain', unlockLevel: 1, grants: { subactions: ['Channel Divinity: Radiance of the Dawn'] } },
-    ],
-  },
-  {
-    id: 'druid',
-    name: 'Druid',
-    hitDie: 8,
-    armor: ['light', 'medium', 'shields'],
-    weapons: ['clubs', 'daggers', 'darts', 'javelins', 'maces', 'quarterstaff', 'scimitars', 'sickles', 'slings', 'spears'],
-    grants: { subactions: ['Cast Spell'] },
-    featuresByLevel: {
-      1: [
-        { name: 'Druidic', text: 'Secret druidic language known to druids.' },
-        { name: 'Spellcasting', text: 'WIS‑based prepared spellcasting. Cantrips & 1st‑level slots.' },
-      ],
-      2: [
-        { name: 'Wild Shape', text: 'Magically assume the shape of a beast you have seen (limited CR/time).' },
-        { name: 'Druid Circle', text: 'Choose a circle (subclass) and gain its level 2 features.' },
-      ],
-      4: [
-        { name: 'Ability Score Improvement', text: '+2 to one ability or +1 to two abilities (demo text).' },
-      ],
-      5: [
-        { name: 'Wild Shape Improvement', text: 'Improved wild shape options and spellcasting progression.' },
-      ],
-    },
-    saves: ['int', 'wis'],
-    subclasses: [
-      { id: 'circle-land', name: 'Circle of the Land', unlockLevel: 2, grants: { subactions: [] } },
-      { id: 'circle-moon', name: 'Circle of the Moon', unlockLevel: 2, grants: { subactions: ['Combat Wild Shape'] } },
-    ],
-  },
-  {
-    id: 'wizard',
-    name: 'Wizard',
-    hitDie: 6,
-    armor: [],
-    weapons: ['daggers', 'quarterstaff'],
-    grants: { subactions: ['Cast Spell'] },
-    featuresByLevel: {
-      1: [
-        { name: 'Spellcasting', text: 'INT spellcasting. Cantrips & 1st‑level slots.' },
-        { name: 'Arcane Recovery', text: 'Recover expended slots on short rest.' },
-      ],
-      2: [
-        { name: 'Arcane Tradition', text: 'Choose a subclass (school) and gain its level 2/3 features.' },
-      ],
-      4: [
-        { name: 'Ability Score Improvement', text: '+2 to one ability or +1 to two abilities (demo text).' },
-      ],
-      5: [
-        { name: 'Spellcasting Progression', text: 'Access to higher‑level spell slots and prepared spells.' },
-      ],
-    },
-    saves: ['int', 'wis'],
-    subclasses: [
-      { id: 'evocation', name: 'School of Evocation', unlockLevel: 2, grants: { subactions: ['Sculpt Spells'] } },
-    ],
-  },
-  {
-    id: 'warlock',
-    name: 'Warlock',
-    hitDie: 8,
-    armor: ['light'],
-    weapons: ['simple'],
-    grants: { subactions: ['Cast Spell'] },
-    featuresByLevel: {
-      1: [
-        { name: 'Otherworldly Patron', text: 'Form a pact with a powerful entity and gain patron features.' },
-        { name: 'Pact Magic', text: 'CHA‑based spellcasting using pact slots; Eldritch Blast cantrip available.' },
-      ],
-      2: [
-        { name: 'Eldritch Invocations', text: 'Learn special invocations to augment abilities.' },
-      ],
-      3: [
-        { name: 'Pact Boon', text: 'Choose Chain, Blade, or Tome (not modeled in this demo).' },
-      ],
-      4: [
-        { name: 'Ability Score Improvement', text: '+2 to one ability or +1 to two abilities (demo text).' },
-      ],
-    },
-    saves: ['wis', 'cha'],
-    subclasses: [
-      { id: 'fiend', name: 'The Fiend', unlockLevel: 1 },
-      { id: 'archfey', name: 'The Archfey', unlockLevel: 1 },
-      { id: 'great-old-one', name: 'The Great Old One', unlockLevel: 1 },
-    ],
-  },
-  {
-    id: 'sorcerer',
-    name: 'Sorcerer',
-    hitDie: 6,
-    armor: [],
-    weapons: ['daggers', 'quarterstaff', 'light-crossbow'],
-    grants: { subactions: ['Cast Spell'] },
-    featuresByLevel: {
-      1: [
-        { name: 'Sorcerous Origin', text: 'Choose a bloodline that grants innate magic.' },
-        { name: 'Spellcasting', text: 'CHA‑based flexible spellcasting. Cantrips & 1st‑level slots.' },
-      ],
-      2: [
-        { name: 'Font of Magic', text: 'Sorcery Points fuel metamagic and spell slot conversions.' },
-      ],
-      3: [
-        { name: 'Metamagic', text: 'Alter spells using metamagic options.' },
-      ],
-      4: [
-        { name: 'Ability Score Improvement', text: '+2 to one ability or +1 to two abilities (demo text).' },
-      ],
-    },
-    saves: ['con', 'cha'],
-    subclasses: [
-      { id: 'draconic-bloodline', name: 'Draconic Bloodline', unlockLevel: 1 },
-      { id: 'wild-magic', name: 'Wild Magic', unlockLevel: 1 },
-    ],
-  },
-]
-
-// Equipment and subactions moved to ../data/equipment
-
-// Skills moved to ../data/skills
-
-// Grants mapping (demo): map certain race traits and classes to skill choices.
-const RACE_TRAIT_SKILLS: Record<string, string[]> = {
-  // Elf Keen Senses -> Perception
-  keen: ['perception'],
-  // Half-Orc Menacing -> Intimidation
-  menacing: ['intimidation'],
-}
-
-// Simple class skill choice lists (demo approximation)
-const CLASS_SKILL_CHOICES: Record<string, { count: number; options: string[] }> = {
-  barbarian: { count: 2, options: ['animal', 'athletics', 'intimidation', 'nature', 'perception', 'survival'] },
-  bard: { count: 3, options: ['acrobatics','animal','arcana','athletics','deception','history','insight','intimidation','investigation','medicine','nature','perception','performance','persuasion','religion','sleight','stealth','survival'] },
-  cleric: { count: 2, options: ['history', 'insight', 'medicine', 'persuasion', 'religion'] },
-  druid: { count: 2, options: ['arcana', 'animal', 'insight', 'medicine', 'nature', 'perception', 'religion', 'survival'] },
-  fighter: { count: 2, options: ['acrobatics', 'animal', 'athletics', 'history', 'insight', 'intimidation', 'perception', 'survival'] },
-  monk: { count: 2, options: ['acrobatics', 'athletics', 'history', 'insight', 'religion', 'stealth'] },
-  paladin: { count: 2, options: ['athletics', 'insight', 'intimidation', 'medicine', 'persuasion', 'religion'] },
-  ranger: { count: 3, options: ['animal','athletics','insight','investigation','nature','perception','stealth','survival'] },
-  rogue: { count: 4, options: ['acrobatics','athletics','deception','insight','intimidation','investigation','perception','performance','persuasion','sleight','stealth'] },
-  sorcerer: { count: 2, options: ['arcana','deception','insight','intimidation','persuasion','religion'] },
-  warlock: { count: 2, options: ['arcana','deception','history','intimidation','investigation','nature','religion'] },
-  wizard: { count: 2, options: ['arcana', 'history', 'insight', 'investigation', 'medicine', 'religion'] },
-}
-
-// Class feature decisions (demo): e.g., Fighter Fighting Style at level 1
-type ClassFeatureDecisionSpec = {
-  id: string
-  name: string
-  level: number
-  picks?: number
-  options: Array<{ id: string; name: string; text: string }>
-}
 const CLASS_FEATURE_DECISIONS: Record<string, ClassFeatureDecisionSpec[]> = {
+  barbarian: [
+    // Minimal subset (original first totem choice truncated during refactor)
+    {
+      id: 'path-feature-6',
+      name: 'Path Feature (6th)',
+      level: 6,
+      picks: 1,
+      options: [
+        { id: 'berserker-mindless-rage', name: 'Mindless Rage', text: 'While raging you can’t be charmed or frightened.' },
+        { id: 'totem-warrior-aspect', name: 'Aspect of the Beast', text: 'Gain passive beast aspect boon (e.g., bear might, eagle eyes).' },
+        { id: 'ancestral-guardian-spirit-shield', name: 'Spirit Shield', text: 'Reaction: reduce damage to ally within 30 ft.' },
+        { id: 'storm-herald-storm-soul', name: 'Storm Soul', text: 'Elemental resistance and minor aura utility.' },
+        { id: 'zealot-fanatic-focus', name: 'Fanatical Focus', text: 'Once per rage reroll a failed saving throw.' },
+      ],
+    },
+    {
+      id: 'path-feature-10',
+      name: 'Path Feature (10th)',
+      level: 10,
+      picks: 1,
+      options: [
+        { id: 'berserker-intimidating-presence', name: 'Intimidating Presence', text: 'Frighten a creature with menacing glare (action, save ends).' },
+        { id: 'totem-warrior-spirit-walker', name: 'Spirit Walker', text: 'Cast commune with nature as a ritual to consult spirits.' },
+        { id: 'ancestral-guardian-consult-spirits', name: 'Consult the Spirits', text: 'Augury / clairvoyance style spirit guidance (demo placeholder).' },
+        { id: 'storm-herald-shielding-storm', name: 'Shielding Storm', text: 'Aura grants elemental resistance to allies.' },
+        { id: 'zealot-zealous-presence', name: 'Zealous Presence', text: 'Bonus action: grant allies advantage on attacks & saves briefly.' },
+      ],
+    },
+    {
+      id: 'path-feature-14',
+      name: 'Path Feature (14th)',
+      level: 14,
+      picks: 1,
+      options: [
+        { id: 'berserker-retaliation', name: 'Retaliation', text: 'Use reaction to melee attack a creature that damages you.' },
+        { id: 'totem-warrior-totemic-attunement', name: 'Totemic Attunement', text: 'Powerful aura/benefit based on chosen totem.' },
+        { id: 'ancestral-guardian-vengeful-ancestors', name: 'Vengeful Ancestors', text: 'Spirit Shield damage reflection.' },
+        { id: 'storm-herald-raging-storm', name: 'Raging Storm', text: 'Aura imposes control or damage when enemies end turn in it.' },
+        { id: 'zealot-rage-beyond-death', name: 'Rage Beyond Death', text: 'Keep fighting at 0 HP while raging; fall only after rage ends.' },
+      ],
+    },
+  ],
   fighter: [
     {
       id: 'fighting-style',
@@ -767,6 +467,28 @@ const CLASS_FEATURE_DECISIONS: Record<string, ClassFeatureDecisionSpec[]> = {
   ],
 }
 
+// Filter & adapt class feature decision specs based on current subclass/path selections.
+function filteredClassFeatureDecisions(c: { klass: Klass; level?: number; subclass?: Subclass }): ClassFeatureDecisionSpec[] {
+  let specs = CLASS_FEATURE_DECISIONS[c.klass.id] || []
+  if (c.klass.id === 'barbarian') {
+    const path = c.subclass?.id
+    specs = specs
+      .filter(d => {
+        if (['totem-spirit','aspect-of-the-beast','totemic-attunement'].includes(d.id)) return path === 'totem-warrior'
+        if (d.id === 'storm-aura-type') return path === 'storm-herald'
+        return true
+      })
+      .map(d => {
+        if (path && d.id.startsWith('path-feature-')) {
+          const filtered = d.options.filter(o => o.id.startsWith(path))
+          if (filtered.length) return { ...d, options: filtered }
+        }
+        return d
+      })
+  }
+  return specs
+}
+
 // Backgrounds moved to ../data/backgrounds
 
 // Spells, metadata, and derived constants moved to ../data/spells
@@ -793,7 +515,7 @@ function getHands(i: Equipment): number {
 
 type Issue = { level: 'error' | 'warn' | 'hint'; msg: string }
 
-type RuleOpts = { tceActive?: boolean; tceMode?: '2+1' | '1+1+1'; tceAlloc?: Record<AbilityKey, number>; multiclassReqs?: boolean }
+type RuleOpts = { tceActive?: boolean; tceMode?: '2+1' | '1+1+1'; tceAlloc?: Record<AbilityKey, number>; multiclassReqs?: boolean; customOrigin?: boolean; originAlloc?: { plus2?: AbilityKey; plus1?: AbilityKey } }
 
 function validateChoice(state: AppState, opts?: RuleOpts): Issue[] {
   const issues: Issue[] = []
@@ -904,10 +626,37 @@ function computeDerived(state: AppState, opts?: RuleOpts) {
   const itemSubs = state.loadout.flatMap((i) => SUBACTIONS_BY_ITEM[(i as any).id] ?? [])
   const subactions = dedupe([...classSubs, ...subclassSubs, ...itemSubs])
 
+  // Barbarian specific derived data: rage uses & damage bonus, path tags
+  let rageUses: number | 'unlimited' | null = null
+  let rageDamageBonus = 0
+  let barbarianLevel = state.classes.filter(c => c.klass.id === 'barbarian').reduce((s,c)=>s+(c.level||0),0)
+  if (barbarianLevel > 0) {
+    // 5e progression approximation
+    // Uses by level: 1-2:2,3-5:3,6-10:4,11-15:5,16-19:6,20:unlimited
+    if (barbarianLevel >= 20) rageUses = 'unlimited'
+    else if (barbarianLevel >= 16) rageUses = 6
+    else if (barbarianLevel >= 11) rageUses = 5
+    else if (barbarianLevel >= 6) rageUses = 4
+    else if (barbarianLevel >= 3) rageUses = 3
+    else rageUses = 2
+    // Damage bonus: levels 1-8: +2, 9-15: +3, 16+: +4 (matches feature entries added earlier)
+    if (barbarianLevel >= 16) rageDamageBonus = 4
+    else if (barbarianLevel >= 9) rageDamageBonus = 3
+    else rageDamageBonus = 2
+  }
+
+  // Storm Herald hook: if subclass is storm-herald, add aura tag to subactions for visibility
+  const hasStormHerald = state.classes.some(c => c.subclass?.id === 'storm-herald')
+  if (hasStormHerald && !subactions.includes('Storm Aura')) subactions.push('Storm Aura')
+
   // Saving throws (union of class save proficiencies)
   const final = finalAbility(state.abilities, state.race, state.asi, opts)
   const prof = proficiencyBonus(totalLevel)
-  const saveProfs = dedupe(state.classes.flatMap((c) => c.klass.saves ?? []))
+  let saveProfs = dedupe(state.classes.flatMap((c) => c.klass.saves ?? []))
+  if ((state.feats || []).includes('resilient')) {
+    const ra = (state as any).featChoices?.resilientAbility as AbilityKey | undefined
+    if (ra && !saveProfs.includes(ra)) saveProfs = [...saveProfs, ra]
+  }
   const saves: Record<AbilityKey, number> = {
     str: mod(final.str) + (saveProfs.includes('str') ? prof : 0),
     dex: mod(final.dex) + (saveProfs.includes('dex') ? prof : 0),
@@ -919,7 +668,7 @@ function computeDerived(state: AppState, opts?: RuleOpts) {
 
   // Initiative (DEX mod plus Alert +5)
   const initiative = dexMod + ((state.feats || []).includes('alert') ? 5 : 0)
-  return { ac, hp, speed, subactions, dexMod, conMod, strMod, saves, totalLevel, initiative }
+  return { ac, hp, speed, subactions, dexMod, conMod, strMod, saves, totalLevel, initiative, rageUses, rageDamageBonus, barbarianLevel }
 }
 
 // simulateReadiness removed
@@ -935,8 +684,8 @@ function Labeled(props: { label: string; children: React.ReactNode }) {
   )
 }
 
-function Pill(props: { children: React.ReactNode }) {
-  return <span style={{ padding: '2px 8px', borderRadius: 999, background: 'var(--pill-bg, #f1f5f9)', color: 'var(--fg)', fontSize: 12, whiteSpace: 'nowrap' }}>{props.children}</span>
+function Pill(props: { children: React.ReactNode; style?: React.CSSProperties }) {
+  return <span style={{ padding: '2px 8px', borderRadius: 999, background: 'var(--pill-bg, #f1f5f9)', color: 'var(--fg)', fontSize: 12, whiteSpace: 'nowrap', ...(props.style || {}) }}>{props.children}</span>
 }
 
 function Button(props: React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: 'default' | 'outline' | 'ghost'; size?: 'sm' | 'md' | 'icon' }) {
@@ -979,7 +728,13 @@ function CardContent(props: { children: React.ReactNode }) {
 const inp: React.CSSProperties = { width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--muted-border)', color: 'var(--fg)', background: 'var(--card-bg)' }
 const badgeSecondary: React.CSSProperties = { padding: '2px 8px', borderRadius: 999, background: 'var(--pill-bg, #f1f5f9)', border: '1px solid var(--muted-border)', fontSize: 12, color: 'var(--fg)' }
 const badgeOutline: React.CSSProperties = { padding: '2px 8px', borderRadius: 999, border: '1px solid var(--muted-border)', fontSize: 12, color: 'var(--fg)' }
-const card: React.CSSProperties = { border: '1px solid var(--muted-border)', borderRadius: 12, background: 'var(--card-bg)', boxShadow: '0 2px 8px rgba(15,23,42,0.05)' }
+const card: React.CSSProperties = { border: '1px solid var(--muted-border)', borderRadius: 12, background: 'var(--card-bg)', boxShadow: '0 2px 8px rgba(15,23,42,0.05)', position: 'relative' }
+const progTh: React.CSSProperties = { padding: '6px 8px', textAlign: 'left', fontWeight: 600, fontSize: 11, letterSpacing: 0.5, textTransform: 'uppercase', borderLeft: '1px solid var(--muted-border)', whiteSpace: 'nowrap' }
+const progTd: React.CSSProperties = { padding: '6px 8px', textAlign: 'center', fontSize: 12, verticalAlign: 'top' }
+
+// Placeholder maps restored after refactor (simplified). Replace with richer data as needed.
+const RACE_TRAIT_SKILLS: Record<string, string[]> = {}
+const CLASS_SKILL_CHOICES: Record<string, { picks: number; options: string[] }> = {}
 
 // ---------------- App State ----------------
 
@@ -1001,6 +756,99 @@ export type AppState = {
   featChoices?: Record<string, any>
 }
 
+// Branch selector component (placed above Builder to avoid redeclaration on renders)
+function BranchProgressionSelector(props: { characterName?: string; currentClasses: Array<{ klass: Klass; level: number; subclass?: Subclass }>; onSelectSequence: (seq: Array<{ klass: Klass; level: number; subclass?: Subclass }>, seqOrder: string[]) => void }) {
+  const [branchOptions, setBranchOptions] = React.useState<Array<{ id: string; label: string; seq: string[] }>>([])
+  const [selected, setSelected] = React.useState('')
+
+  React.useEffect(() => {
+    try {
+  const allKeys = Object.keys(localStorage).filter(k => k.startsWith('progressionPlanner.v1:'))
+  const activeRootKey = `progressionPlanner.activeRoot.v1:${props.characterName || 'default'}`
+  const activeRootId = localStorage.getItem(activeRootKey) || undefined
+      const opts: Array<{ id: string; label: string; seq: string[] }> = []
+      for (const key of allKeys) {
+        const raw = localStorage.getItem(key)
+        if (!raw) continue
+        const parsed = JSON.parse(raw)
+        if (!parsed || !Array.isArray(parsed.nodes) || !Array.isArray(parsed.edges)) continue
+        // Derive branch sequences: each root defines one branch following first-edge chaining similar to planner signature logic
+        const nodes: any[] = parsed.nodes
+        const edges: any[] = parsed.edges
+        const idToNode = new Map(nodes.map(n => [n.id, n]))
+        const roots = nodes.filter(n => n.type === 'root')
+        roots.forEach(root => {
+          const seq: string[] = []
+            let cur = root.id
+            let guard = 0
+            while (cur && guard < 256) {
+              guard++
+              const outs = edges.filter(e => e.source === cur)
+              if (!outs.length) break
+              const nextId = outs
+                .map(e => ({ e, n: idToNode.get(e.target) }))
+                .filter(x => !!x.n)
+                .sort((a,b)=> (a.n.position?.y||0)-(b.n.position?.y||0))[0]?.n?.id
+              if (!nextId) break
+              const nn = idToNode.get(nextId)
+              if (nn?.type === 'progressStep' && nn.data?.type === 'class' && nn.data?.className) {
+                seq.push(nn.data.className)
+              }
+              cur = nextId
+            }
+          if (seq.length) {
+            const labelBase = `${root.data?.race || 'Race'} • ${root.data?.background || 'Background'}`
+            const optionId = `${key}::${root.id}`
+            opts.push({ id: optionId, label: `${labelBase} (${seq.length} lvls)`, seq })
+            if (activeRootId && root.id === activeRootId) {
+              // Preselect active branch
+              setSelected(optionId)
+              // If builder still default single level, auto import
+              if (props.currentClasses.length === 1 && props.currentClasses[0].level === 1) {
+                // apply immediately (aggregate duplicate classes into levels)
+                const count: Record<string, { klass: Klass; level: number }> = {}
+                seq.forEach(name => {
+                  const k = CLASSES.find(c => c.name === name) || CLASSES[0]
+                  if (count[k.id]) count[k.id].level += 1; else count[k.id] = { klass: k, level: 1 }
+                })
+                const out = Object.values(count)
+                props.onSelectSequence(out, seq.map(n => (CLASSES.find(c => c.name === n) || CLASSES[0]).id))
+              }
+            }
+          }
+        })
+      }
+      setBranchOptions(opts)
+    } catch {}
+  }, [props.characterName, props.currentClasses.length])
+
+  const applySeq = (seq: string[]) => {
+    // Aggregate duplicates so UI shows one card per class while preserving chronological order separately
+    const count: Record<string, { klass: Klass; level: number; subclass?: Subclass }> = {}
+    seq.forEach(name => {
+      const k = CLASSES.find(c => c.name === name) || CLASSES[0]
+      if (count[k.id]) count[k.id].level += 1; else count[k.id] = { klass: k, level: 1 }
+    })
+    const out = Object.values(count)
+    const orderIds = seq.map(n => (CLASSES.find(c => c.name === n) || CLASSES[0]).id)
+    props.onSelectSequence(out, orderIds)
+  }
+
+  if (!branchOptions.length) return null
+  return (
+    <div style={{ marginBottom: 12, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+      <label style={{ fontSize: 12, color: '#475569', display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <span style={{ fontWeight: 600 }}>Import Branch Sequence</span>
+  <select value={selected} onChange={e => { const v = e.target.value; setSelected(v); const opt = branchOptions.find(o => o.id === v); if (opt) applySeq(opt.seq) }} style={{ fontSize: 12, padding: '4px 6px', borderRadius: 6, border: '1px solid #cbd5e1', background: 'white' }}>
+          <option value="">(select branch)</option>
+          {branchOptions.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
+        </select>
+      </label>
+      <div style={{ fontSize: 11, color: '#64748b' }}>Selecting imports per-level class order. Existing list replaced.</div>
+    </div>
+  )
+}
+
 // ---------------- Main Component ----------------
 
 export function Builder(props: { onCharacterChange?: (state: AppState, derived?: any) => void; importPlan?: any }) {
@@ -1010,6 +858,25 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
   const [classes, setClasses] = useState<Array<{ klass: Klass; level: number; subclass?: Subclass }>>([
     { klass: CLASSES[0], level: 1 },
   ])
+  // Chronological record of each level pick in order pressed (stores class ids in sequence)
+  const [classLevelOrder, setClassLevelOrder] = useState<string[]>([CLASSES[0].id])
+  // Collapse duplicate single-level class entries (artifact from earlier sequence mode) into aggregated levels
+  useEffect(() => {
+    if (classes.length <= 1) return
+    // Detect artifact: multiple entries of same class all with level 1
+    const dupIds = classes.filter(c => c.level === 1).map(c => c.klass.id)
+    const freq: Record<string, number> = {}
+    dupIds.forEach(id => { freq[id] = (freq[id]||0)+1 })
+    const needsCollapse = Object.values(freq).some(n => n > 1)
+    if (!needsCollapse) return
+    const agg: Record<string, { klass: Klass; level: number; subclass?: Subclass }> = {}
+    classes.forEach(c => {
+      if (agg[c.klass.id]) agg[c.klass.id].level += c.level
+      else agg[c.klass.id] = { ...c }
+    })
+    const collapsed = Object.values(agg)
+    if (collapsed.length !== classes.length) setClasses(collapsed)
+  }, [classes])
   const [abilities, setAbilities] = useState<Record<AbilityKey, number>>({ str: 15, dex: 14, con: 14, int: 10, wis: 10, cha: 8 })
   const [loadout, setLoadout] = useState<Equipment[]>([EQUIPMENT[0], EQUIPMENT[1]]) // greataxe + shield
   // Background selection
@@ -1038,16 +905,47 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
   const [catalogQuery, setCatalogQuery] = useState('')
   const [catalogTags, setCatalogTags] = useState<string[]>([])
   const [catalogFiltersOpen, setCatalogFiltersOpen] = useState(false)
+  const [catalogSort, setCatalogSort] = useState<'alpha' | 'weight' | 'cost' | 'damageDie' | 'ac' | 'hands'>('alpha')
+  const [catalogSortDir, setCatalogSortDir] = useState<'asc' | 'desc'>('asc')
+  const [catalogSortOpen, setCatalogSortOpen] = useState(false)
+  const [showFullProgression, setShowFullProgression] = useState(false)
+  // Chronological sequence from imported Planner plan (includes future levels). Empty when none imported.
+  const [importedPlanSequence, setImportedPlanSequence] = useState<Array<{ klass: Klass; subclass?: Subclass; future?: boolean }>>([])
   const allTags = useMemo(() => dedupe(EQUIPMENT.flatMap((i) => (((i as any).tags || []) as string[]))), [])
   const filteredEquipment = useMemo(() => {
     const q = catalogQuery.trim().toLowerCase()
-    return EQUIPMENT.filter((eq) => {
+    const base = EQUIPMENT.filter((eq) => {
       const tags = (((eq as any).tags || []) as string[])
       const nameMatch = q ? eq.name.toLowerCase().includes(q) : true
       const tagsMatch = catalogTags.length ? catalogTags.every((tg) => tags.includes(tg)) : true
       return nameMatch && tagsMatch
     })
-  }, [catalogQuery, catalogTags])
+    const parseDie = (d: string): number => {
+      // crude heuristic: take max of dice average; e.g., 2d6 -> 7 (avg 2*3.5)
+      const m = d.match(/(\d+)d(\d+)/)
+      if (m) return (parseInt(m[1]) * (parseInt(m[2]) + 1)) / 2
+      return 0
+    }
+    const getKey = (eq: Equipment) => {
+      switch (catalogSort) {
+        case 'alpha': return eq.name.toLowerCase()
+        case 'weight': return (eq as any).weight ?? 0
+        case 'cost': return (eq as any).cost ?? 0
+        case 'damageDie': return eq.type === 'weapon' ? parseDie((eq as any).dmg || '') : -999
+        case 'ac': return eq.type === 'armor' ? (eq as any).ac : eq.type === 'shield' ? ((eq as any).ac || 2) : -999
+        case 'hands': return (eq as any).hands ?? 0
+        default: return eq.name.toLowerCase()
+      }
+    }
+    const sorted = [...base].sort((a, b) => {
+      const ka = getKey(a)
+      const kb = getKey(b)
+      if (ka < kb) return catalogSortDir === 'asc' ? -1 : 1
+      if (ka > kb) return catalogSortDir === 'asc' ? 1 : -1
+      return a.name.localeCompare(b.name)
+    })
+    return sorted
+  }, [catalogQuery, catalogTags, catalogSort, catalogSortDir])
   const toggleTag = (tag: string) => setCatalogTags((prev) => (prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]))
 
   // Spells state (simple per-class storage)
@@ -1073,13 +971,57 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
   const [asiAlloc, setAsiAlloc] = useState<Record<AbilityKey, number>>({ str: 0, dex: 0, con: 0, int: 0, wis: 0, cha: 0 })
   const [selectedFeats, setSelectedFeats] = useState<string[]>([])
   const [featChoices, setFeatChoices] = useState<Record<string, any>>({})
-  // Rules & options
-  const [rulesOpen, setRulesOpen] = useState(false)
-  const rulesRef = useRef<HTMLDivElement | null>(null)
-  const [rules, setRules] = useState<{ tceCustomAsi: boolean; multiclassReqs: boolean }>({ tceCustomAsi: false, multiclassReqs: false })
-  const [tceMode, setTceMode] = useState<'2+1' | '1+1+1'>('2+1')
-  const emptyAlloc: Record<AbilityKey, number> = { str: 0, dex: 0, con: 0, int: 0, wis: 0, cha: 0 }
-  const [tceAlloc, setTceAlloc] = useState<Record<AbilityKey, number>>({ ...emptyAlloc, str: 2, dex: 1 })
+  // Custom Origin allocation (+2 / +1) when enabled
+  const [originAlloc, setOriginAlloc] = useState<{ plus2?: AbilityKey; plus1?: AbilityKey }>({ plus2: 'str', plus1: 'dex' })
+  // Global rules (TCE, multiclass requirements) from context
+  const {
+    tceCustomAsi,
+    tceMode,
+    tceAlloc,
+    multiclassReqs,
+  featsEnabled,
+  customOrigin,
+    setTceCustomAsi,
+    setTceMode,
+    setTceAlloc,
+    resetTceAllocForMode,
+  } = useRules()
+
+  // If feats disabled globally, ensure none remain selected (auto-clean once)
+  useEffect(() => {
+    if (!featsEnabled && race?.id !== 'human-variant' && selectedFeats.length) setSelectedFeats([])
+  }, [featsEnabled, race?.id])
+  // If feats are disabled and Variant Human was selected, revert to base Human (variant requires feat option)
+  useEffect(() => {
+    if (!featsEnabled && race?.id === 'human-variant') {
+      const baseHuman = RACES.find(r => r.id === 'human')
+      if (baseHuman) setRace(baseHuman)
+    }
+  }, [featsEnabled, race?.id])
+  // Expose minimal state globally for helper functions (e.g., finalAbility) without threading props
+  useEffect(() => {
+    ;(window as any).builderState = { selectedFeats, featChoices }
+  }, [selectedFeats, featChoices])
+  // One-time migration for legacy resilient-con feat id
+  useEffect(() => {
+    setSelectedFeats(prev => prev.map(f => f === 'resilient-con' ? 'resilient' : f))
+    setFeatChoices(prev => {
+      if ((selectedFeats.includes('resilient-con') || selectedFeats.includes('resilient')) && !prev.resilientAbility) {
+        return { ...prev, resilientAbility: 'con' }
+      }
+      return prev
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+  // Ensure origin allocation keys differ
+  useEffect(() => {
+    if (originAlloc.plus1 && originAlloc.plus2 && originAlloc.plus1 === originAlloc.plus2) {
+      // Auto adjust plus1 to next ability
+      const order: AbilityKey[] = ['str','dex','con','int','wis','cha']
+      const next = order.find(k => k !== originAlloc.plus2) || 'dex'
+      setOriginAlloc(o => ({ ...o, plus1: next }))
+    }
+  }, [originAlloc.plus1, originAlloc.plus2])
   // Persistence (autosave/restore)
   const BUILDER_STORAGE_KEY = 'characterBuilder.v1'
   const restoredRef = useRef(false)
@@ -1102,8 +1044,8 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
   feats: selectedFeats,
   featChoices,
   }
-  const derived = useMemo(() => computeDerived(state, { tceActive: rules.tceCustomAsi, tceMode, tceAlloc }), [state, rules.tceCustomAsi, tceMode, JSON.stringify(tceAlloc)])
-  const issues = useMemo(() => validateChoice(state, { tceActive: rules.tceCustomAsi, tceMode, tceAlloc, multiclassReqs: rules.multiclassReqs }), [state, rules.tceCustomAsi, rules.multiclassReqs, tceMode, JSON.stringify(tceAlloc)])
+  const derived = useMemo(() => computeDerived(state, { tceActive: tceCustomAsi, tceMode, tceAlloc }), [state, tceCustomAsi, tceMode, JSON.stringify(tceAlloc)])
+  const issues = useMemo(() => validateChoice(state, { tceActive: tceCustomAsi, tceMode, tceAlloc, multiclassReqs }), [state, tceCustomAsi, multiclassReqs, tceMode, JSON.stringify(tceAlloc)])
   // Removed toy combat readiness computation
 
   // Detect pending class feature decisions (e.g., subclass unlocked but not chosen)
@@ -1124,7 +1066,7 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
     setClasses((cs) => {
       let changed = false
       const out = cs.map((c) => {
-  const specs = CLASS_FEATURE_DECISIONS[c.klass.id] || []
+  const specs = filteredClassFeatureDecisions(c)
         const sublike = specs.find((d) => (
           d.name === 'Divine Domain' ||
           d.name === 'Bard College' ||
@@ -1188,6 +1130,81 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
       return out
     })
   }, [background, race, skillSources])
+
+  // Feat: Prodigy integration into skillSources graph (acts like its own source)
+  useEffect(() => {
+    if (!selectedFeats.includes('prodigy')) {
+      // Remove stale prodigy source if feat deselected
+      setSkillSources(prev => {
+        let changed = false
+        const out: Record<string,string[]> = {}
+        Object.entries(prev).forEach(([skill, sources]) => {
+          const filtered = sources.filter(s => s !== 'feat:prodigy')
+          if (filtered.length !== sources.length) changed = true
+          if (filtered.length) out[skill] = filtered
+        })
+        return changed ? out : prev
+      })
+      return
+    }
+    const sk = featChoices.prodigySkill
+    setSkillSources(prev => {
+      let changed = false
+      const out: Record<string,string[]> = {}
+      // First remove existing feat:prodigy from all skills
+      Object.entries(prev).forEach(([skill, sources]) => {
+        const filtered = sources.filter(s => s !== 'feat:prodigy')
+        if (filtered.length !== sources.length) changed = true
+        if (filtered.length) out[skill] = filtered
+      })
+      if (sk) {
+        const curr = out[sk] || []
+        if (!curr.includes('feat:prodigy')) {
+          out[sk] = [...curr, 'feat:prodigy']
+          changed = true
+        }
+      }
+      return changed ? out : prev
+    })
+  }, [selectedFeats, featChoices.prodigySkill])
+
+  // Feat: Skilled (up to 3 skill proficiencies) — represented as single source 'feat:skilled'
+  useEffect(() => {
+    if (!selectedFeats.includes('skilled')) {
+      // remove any feat:skilled sources
+      setSkillSources(prev => {
+        let changed = false
+        const out: Record<string,string[]> = {}
+        Object.entries(prev).forEach(([skill, sources]) => {
+          // remove legacy numbered markers feat:skilled0/1/2 as well
+          const filtered = sources.filter(s => !s.startsWith('feat:skilled'))
+            if (filtered.length !== sources.length) changed = true
+            if (filtered.length) out[skill] = filtered
+        })
+        return changed ? out : prev
+      })
+      return
+    }
+    const picks: string[] = (featChoices.skilledSkills || []).slice(0,3)
+    setSkillSources(prev => {
+      let changed = false
+      const out: Record<string,string[]> = {}
+      // strip old skilled markers
+      Object.entries(prev).forEach(([skill, sources]) => {
+        const filtered = sources.filter(s => !s.startsWith('feat:skilled'))
+        if (filtered.length !== sources.length) changed = true
+        if (filtered.length) out[skill] = filtered
+      })
+      picks.forEach((sid) => {
+        const curr = out[sid] || []
+        if (!curr.includes('feat:skilled')) {
+          out[sid] = [...curr, 'feat:skilled']
+          changed = true
+        }
+      })
+      return changed ? out : prev
+    })
+  }, [selectedFeats, JSON.stringify(featChoices.skilledSkills)])
 
   // Helpers to add/remove sources with proficiency updates
   function addSkillSource(skillId: string, source: string) {
@@ -1279,12 +1296,11 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
           if (saved.asiAlloc && typeof saved.asiAlloc === 'object') setAsiAlloc(saved.asiAlloc)
           if (Array.isArray(saved.selectedFeats)) setSelectedFeats(saved.selectedFeats)
           if (saved.featChoices && typeof saved.featChoices === 'object') setFeatChoices(saved.featChoices)
-          // Rules restore
+          if (saved.originAlloc && typeof saved.originAlloc === 'object') setOriginAlloc(saved.originAlloc)
+          // Rules restore (now global) - only TCE data applied; multiclass toggle handled in drawer
           if (saved.rules && typeof saved.rules === 'object') {
-            setRules({
-              tceCustomAsi: !!saved.rules.tceCustomAsi,
-              multiclassReqs: !!saved.rules.multiclassReqs,
-            })
+            const emptyAlloc: Record<AbilityKey, number> = { str: 0, dex: 0, con: 0, int: 0, wis: 0, cha: 0 }
+            if (typeof saved.rules.tceCustomAsi === 'boolean') setTceCustomAsi(saved.rules.tceCustomAsi)
             if (saved.rules.tceMode === '1+1+1' || saved.rules.tceMode === '2+1') setTceMode(saved.rules.tceMode)
             if (saved.rules.tceAlloc && typeof saved.rules.tceAlloc === 'object') setTceAlloc({ ...emptyAlloc, ...saved.rules.tceAlloc })
           }
@@ -1335,11 +1351,12 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
         knownSpells,
         preparedSpells,
         // ASI/Feats
-        asiAlloc,
-        selectedFeats,
-        featChoices,
+  asiAlloc,
+  selectedFeats,
+  originAlloc,
+  featChoices,
   // Rules
-  rules: { tceCustomAsi: rules.tceCustomAsi, multiclassReqs: rules.multiclassReqs, tceMode, tceAlloc },
+  rules: { tceCustomAsi, multiclassReqs, tceMode, tceAlloc },
         // Minor UI prefs
         showCompleted,
         catalogQuery,
@@ -1370,9 +1387,10 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
     JSON.stringify(knownSpells),
     JSON.stringify(preparedSpells),
     JSON.stringify(asiAlloc),
-    JSON.stringify(selectedFeats),
+  JSON.stringify(selectedFeats),
+  JSON.stringify(originAlloc),
     JSON.stringify(featChoices),
-  JSON.stringify(rules),
+  // removed legacy rules dependency
   tceMode,
   JSON.stringify(tceAlloc),
     showCompleted,
@@ -1406,10 +1424,11 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
       preparedSpells,
       // ASI/Feats
       asiAlloc,
-      selectedFeats,
+  selectedFeats,
+  originAlloc,
       featChoices,
   // Rules
-  rules: { tceCustomAsi: rules.tceCustomAsi, multiclassReqs: rules.multiclassReqs, tceMode, tceAlloc },
+  rules: { tceCustomAsi, multiclassReqs, tceMode, tceAlloc },
       // Minor UI prefs that are useful if sharing
       skillTab,
       skillLayout,
@@ -1544,7 +1563,8 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
       // Rules (optional)
       const impRules = get('rules')
       if (impRules && typeof impRules === 'object') {
-        setRules({ tceCustomAsi: !!impRules.tceCustomAsi, multiclassReqs: !!impRules.multiclassReqs })
+        const emptyAlloc: Record<AbilityKey, number> = { str: 0, dex: 0, con: 0, int: 0, wis: 0, cha: 0 }
+        if (typeof impRules.tceCustomAsi === 'boolean') setTceCustomAsi(impRules.tceCustomAsi)
         if (impRules.tceMode === '1+1+1' || impRules.tceMode === '2+1') setTceMode(impRules.tceMode)
         if (impRules.tceAlloc && typeof impRules.tceAlloc === 'object') setTceAlloc({ ...emptyAlloc, ...impRules.tceAlloc })
       }
@@ -1583,15 +1603,27 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
     const nextRace = RACES.find((r) => r.name === plan.race) || race
     const nextBg = BACKGROUNDS.find((b) => b.name === plan.background) || background
 
-    // Aggregate levels -> classes map
-    const levelEntries: Array<{ level: number; className?: string; feats?: string[]; featureChoices?: any[] }> = Array.isArray(plan.levels) ? plan.levels : []
+    // Level entries from plan (may include future flag)
+    const levelEntries: Array<{ level: number; className?: string; feats?: string[]; featureChoices?: any[]; future?: boolean; subclass?: string }> = Array.isArray(plan.levels) ? plan.levels : []
+
+    // Build chronological per-level sequence including future markers (for display only)
+    const chronological: Array<{ klass: Klass; subclass?: Subclass; future?: boolean }> = levelEntries
+      .filter(lv => lv.className)
+      .map(lv => {
+        const k = CLASSES.find(c => c.name === lv.className!)
+        if (!k) return null
+        const sc = lv.subclass ? k.subclasses?.find(s => s.name === lv.subclass) : undefined
+        return { klass: k, subclass: sc, future: !!lv.future }
+      })
+      .filter(Boolean) as Array<{ klass: Klass; subclass?: Subclass; future?: boolean }>
+
+    // Aggregate realized (non-future) levels into class counts
     const classCounts: Record<string, number> = {}
-    levelEntries.forEach((lv) => {
+    levelEntries.filter(lv => !lv.future).forEach((lv) => {
       const nm = String(lv.className || '').trim()
       if (!nm) return
       classCounts[nm] = (classCounts[nm] || 0) + 1
     })
-    // Build classes array using known CLASSES by name
     const nextClasses: Array<{ klass: Klass; level: number; subclass?: Subclass }> = []
     Object.entries(classCounts).forEach(([nm, lvl]) => {
       const k = CLASSES.find((c) => c.name === nm)
@@ -1599,9 +1631,9 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
     })
     if (!nextClasses.length) nextClasses.push({ klass: CLASSES[0], level: 1 })
 
-    // Collect feats: map incoming names to known FEATS ids when possible
+    // Collect feats only from realized levels
     const nextFeats: string[] = []
-    levelEntries.forEach((lv) => {
+    levelEntries.filter(lv => !lv.future).forEach((lv) => {
       const arr: string[] = Array.isArray(lv.feats) ? lv.feats : []
       arr.forEach((f) => {
         if (f && typeof f === 'string') {
@@ -1623,7 +1655,8 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
       fcs.forEach((ch: any) => {
         if (!ch || !klassId) return
         if (ch.kind === 'fighting-style') {
-          const specs = CLASS_FEATURE_DECISIONS[klassId] || []
+          const cls = classes.find(c => c.klass.id === klassId) || { klass: { id: klassId } as any }
+          const specs = filteredClassFeatureDecisions(cls)
           const dec = specs.find((d) => d.id === 'fighting-style')
           const optName = String(ch.style || '').trim().toLowerCase()
           if (dec && optName) {
@@ -1640,7 +1673,8 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
             }
           }
         } else if (ch.kind === 'subclass') {
-          const specs = CLASS_FEATURE_DECISIONS[klassId] || []
+          const cls2 = classes.find(c => c.klass.id === klassId) || { klass: { id: klassId } as any }
+          const specs = filteredClassFeatureDecisions(cls2)
           const subDecision = specs.find((d) => ['sacred-oath','divine-domain','bard-college','monastic-tradition','druid-circle','roguish-archetype','ranger-archetype','sorcerous-origin','otherworldly-patron'].includes(d.id))
           const inp = String(ch.subclass || '').trim().toLowerCase()
           if (subDecision && inp) {
@@ -1659,9 +1693,9 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
           nextClassSkillPicks[klassId] = arr
         }
       })
-    })
+  })
 
-    return { nextRace, nextBg, nextClasses, nextFeats, nextCfc, nextClassSkillPicks }
+  return { nextRace, nextBg, nextClasses, nextFeats, nextCfc, nextClassSkillPicks, chronological }
   }
 
   function summarizeClassCounts(list: Array<{ klass: Klass; level: number }>) {
@@ -1728,11 +1762,13 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
           return
         }
         setPendingPassivePlan({ plan, diff, mapping, ts })
+        setImportedPlanSequence(mapping.chronological || [])
         return
       }
       // Explicit apply (from Planner Apply button): apply immediately
       setLastImportTsHandled(ts)
       applyMapping(mapping)
+      setImportedPlanSequence(mapping.chronological || [])
     } catch {
       // ignore
     }
@@ -1810,88 +1846,14 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
               setHistory([])
               setFuture([])
         // Reset rules and TCE controls
-        setRules({ tceCustomAsi: false, multiclassReqs: false })
-        setTceMode('2+1')
-        setTceAlloc({ str: 2, dex: 1, con: 0, int: 0, wis: 0, cha: 0 })
-        setRulesOpen(false)
+  // Rules reset moved to global rules context
             }}
           >Reset Character</Button>
           <Button size="sm" onClick={snapshot}><Settings2 size={16} style={{ marginRight: 6 }} />Save Draft</Button>
           <Button size="sm" variant="outline" onClick={exportToFile}>Export JSON</Button>
           <input ref={importInputRef} type="file" accept="application/json" style={{ display: 'none' }} onChange={onImportFileSelected} />
           <Button size="sm" variant="outline" onClick={() => importInputRef.current?.click()}>Import JSON</Button>
-          {/* Rules menu */}
-          <div style={{ position: 'relative' }} ref={rulesRef}>
-            <Button size="sm" onClick={() => setRulesOpen((v) => !v)}><Settings2 size={16} style={{ marginRight: 6 }} />Rules</Button>
-            {rulesOpen ? (
-              <div style={{ position: 'absolute', right: 0, top: '100%', marginTop: 6, background: 'var(--card-bg)', border: '1px solid var(--muted-border)', borderRadius: 8, boxShadow: '0 8px 16px rgba(15,23,42,0.25)', zIndex: 40, minWidth: 320, padding: 10 }}>
-                <div style={{ display: 'grid', gap: 10 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                    <div>
-                      <div style={{ fontWeight: 600, fontSize: 13 }}>TCE Custom Racial Bonuses</div>
-                      <div style={{ fontSize: 12, color: '#64748b' }}>Replace racial ASIs with flexible allocation</div>
-                    </div>
-                    <Button size="sm" variant={rules.tceCustomAsi ? 'default' : 'outline'} onClick={() => setRules((r) => ({ ...r, tceCustomAsi: !r.tceCustomAsi }))}>{rules.tceCustomAsi ? 'On' : 'Off'}</Button>
-                  </div>
-                  {rules.tceCustomAsi ? (
-                    <div style={{ padding: 8, border: '1px solid var(--muted-border)', borderRadius: 8, display: 'grid', gap: 8 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                        <div style={{ fontSize: 12, color: '#64748b' }}>Mode</div>
-                        <Button size="sm" variant={tceMode === '2+1' ? 'default' : 'outline'} onClick={() => { setTceMode('2+1'); setTceAlloc((prev)=>{ const next={...emptyAlloc, ...prev}; const total=Object.values(next).reduce((a,b)=>a+b,0); return total? next: { ...emptyAlloc, str: 2, dex: 1 } }) }}>+2 and +1</Button>
-                        <Button size="sm" variant={tceMode === '1+1+1' ? 'default' : 'outline'} onClick={() => { setTceMode('1+1+1'); setTceAlloc((prev)=>{ const next={...emptyAlloc, ...prev}; const total=Object.values(next).reduce((a,b)=>a+b,0); return total? next: { ...emptyAlloc, str: 1, dex: 1, con: 1 } }) }}>+1/+1/+1</Button>
-                        <Button size="sm" variant="ghost" onClick={() => setTceAlloc(tceMode === '2+1' ? { ...emptyAlloc, str: 2, dex: 1 } : { ...emptyAlloc, str: 1, dex: 1, con: 1 })}>Reset</Button>
-                      </div>
-                      {(() => {
-                        const budget = 3
-                        const limits: Record<AbilityKey, number> = { str: tceMode==='2+1'?2:1, dex: tceMode==='2+1'?2:1, con: tceMode==='2+1'?2:1, int: tceMode==='2+1'?2:1, wis: tceMode==='2+1'?2:1, cha: tceMode==='2+1'?2:1 }
-                        const total = (['str','dex','con','int','wis','cha'] as AbilityKey[]).reduce((s,k)=> s + (tceAlloc[k]||0), 0)
-                        const maxSlots = tceMode === '2+1' ? 2 : 3
-                        const usedSlots = (['str','dex','con','int','wis','cha'] as AbilityKey[]).filter(k => (tceAlloc[k]||0) > 0).length
-                        const canInc = (k: AbilityKey) => {
-                          const curr = tceAlloc[k] || 0
-                          if (curr >= limits[k]) return false
-                          if (total >= budget) return false
-                          if (tceMode === '2+1') {
-                            // prevent third slot on new ability
-                            if (usedSlots >= maxSlots && (tceAlloc[k]||0) === 0) return false
-                            // allow one ability to reach 2; ensure at most one value 2
-                            const alreadyTwo = (['str','dex','con','int','wis','cha'] as AbilityKey[]).some(x => (tceAlloc[x]||0) >= 2)
-                            if (alreadyTwo && curr >= 1) return false
-                          }
-                          return true
-                        }
-                        const canDec = (k: AbilityKey) => (tceAlloc[k]||0) > 0
-                        return (
-                          <>
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 6 }}>
-                              {(['str','dex','con','int','wis','cha'] as AbilityKey[]).map((k) => (
-                                <div key={k} style={{ display: 'grid', gap: 4, alignContent: 'start' }}>
-                                  <div style={{ fontSize: 10, textTransform: 'uppercase', color: '#64748b', textAlign: 'center' }}>{k}</div>
-                                  <div style={{ display: 'flex', justifyContent: 'center', gap: 6 }}>
-                                    <Button size="icon" variant="outline" onClick={() => setTceAlloc((p)=>({ ...p, [k]: Math.max(0, (p[k]||0)-1) }))} disabled={!canDec(k)}>−</Button>
-                                    <div style={{ minWidth: 16, textAlign: 'center', fontWeight: 600 }}>{tceAlloc[k] || 0}</div>
-                                    <Button size="icon" variant="outline" onClick={() => { if (!canInc(k)) return; setTceAlloc((p)=>({ ...p, [k]: Math.min(limits[k], (p[k]||0)+1) })) }}>+</Button>
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                            <div style={{ fontSize: 12, color: '#64748b' }}>Allocated {total} / {budget}</div>
-                          </>
-                        )
-                      })()}
-                    </div>
-                  ) : null}
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                    <div>
-                      <div style={{ fontWeight: 600, fontSize: 13 }}>Enforce Multiclassing Requirements</div>
-                      <div style={{ fontSize: 12, color: '#64748b' }}>Require ability score minimums for additional classes</div>
-                    </div>
-                    <Button size="sm" variant={rules.multiclassReqs ? 'default' : 'outline'} onClick={() => setRules((r) => ({ ...r, multiclassReqs: !r.multiclassReqs }))}>{rules.multiclassReqs ? 'On' : 'Off'}</Button>
-                  </div>
-                </div>
-              </div>
-            ) : null}
-          </div>
+          {/* Inline rules menu removed - global menu used instead */}
         </div>
       </div>
 
@@ -1913,6 +1875,29 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
                 <Labeled label="Race">
                   <RaceSelector value={race} onChange={setRace} />
                 </Labeled>
+                {customOrigin ? (
+                  <div style={{ gridColumn: '1 / -1', marginTop: -4 }}>
+                    <div style={{ fontSize: 12, color: '#64748b', marginBottom: 4 }}>Custom Origin Allocation (+2 and +1)</div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: '.5px', textTransform: 'uppercase', color: '#64748b' }}>+2</div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                          {(['str','dex','con','int','wis','cha'] as AbilityKey[]).map(k => (
+                            <Button key={k} size="sm" variant={originAlloc.plus2 === k ? 'default' : 'outline'} onClick={() => setOriginAlloc(o => ({ ...o, plus2: k, plus1: (o.plus1 === k ? undefined : o.plus1) }))}>{k.toUpperCase()}</Button>
+                          ))}
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: '.5px', textTransform: 'uppercase', color: '#64748b' }}>+1</div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                          {(['str','dex','con','int','wis','cha'] as AbilityKey[]).map(k => (
+                            <Button key={k} size="sm" variant={originAlloc.plus1 === k ? 'default' : 'outline'} disabled={k === originAlloc.plus2} onClick={() => setOriginAlloc(o => ({ ...o, plus1: k }))}>{k.toUpperCase()}</Button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
 
                 {/* Background (col 3) */}
                 <Labeled label="Background">
@@ -1929,288 +1914,67 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
                 <div style={{ gridColumn: '1 / -1' }}>
                   <ClassManager
                     classes={classes}
-                    onChange={setClasses}
+                    onChange={(v: Array<{ klass: Klass; level: number; subclass?: Subclass }>, levelAppend?: string[]) => {
+                      setClasses(v)
+                      if (levelAppend && levelAppend.length) setClassLevelOrder(o => [...o, ...levelAppend])
+                    }}
+                    abilities={abilities}
+                    race={race}
+                    asi={asiAlloc}
                   />
                 </div>
 
-                <AbilityEditor abilities={abilities} onChange={setAbilities} race={race} asi={asiAlloc} tceActive={rules.tceCustomAsi} tceMode={tceMode} tceAlloc={tceAlloc} />
+                <AbilityEditor abilities={abilities} onChange={setAbilities} race={race} asi={asiAlloc} tceActive={tceCustomAsi} tceMode={tceMode} tceAlloc={tceAlloc} />
+
+                {/* TCE controls moved back to global Rules Drawer */}
               </div>
             </CardContent>
           </Card>
 
-          {/* Pending Choices: background/race/class skills the player hasn't finalized */}
-          {(() => {
-            // Determine skills granted by any source
-            const taken = new Set(Object.keys(skillSources))
-
-            // Background skills (fixed in this demo). If conflict, offer replacements.
-            const bgSkills = background?.skills ?? []
-            const bgMissing = bgSkills.filter((s) => !taken.has(s))
-            const bgConflicts = bgSkills.filter((s) => taken.has(s))
-
-            // Race trait skills (e.g., Keen Senses -> Perception)
-            const raceSkills = (race?.traits || []).flatMap((t) => RACE_TRAIT_SKILLS[t.id] || [])
-            const raceMissing = raceSkills.filter((s) => !(skillSources[s] || []).length)
-            const raceConflicts = raceSkills.filter((s) => (skillSources[s] || []).some((src) => src !== 'race' && src !== 'race-pick' && src !== 'manual'))
-
-            // Class skill choices: for each class, count picks not yet made
-            const classNeeds: Array<{ klassId: string; klassName: string; need: number; count: number; options: string[] }> = []
-            classes.forEach((c) => {
-              const spec = CLASS_SKILL_CHOICES[c.klass.id]
-              if (!spec) return
-              const current = classSkillPicks[c.klass.id] || []
-              const selected = current.filter(Boolean)
-              const remaining = Math.max(0, spec.count - selected.length)
-              // Always show the class block; if remaining === 0 we mark it as completed
-              const opts = spec.options
-              classNeeds.push({ klassId: c.klass.id, klassName: c.klass.name, need: remaining, count: spec.count, options: opts })
-            })
-
-            // Class feature decisions (e.g., Fighter Fighting Style)
-            // Support multi-pick decisions by allowing selected to be string | string[]
-            type PendingDecision = { klassId: string; klassName: string; decision: ClassFeatureDecisionSpec; selected?: string | string[] }
-            const decisionNeeds: PendingDecision[] = []
-            classes.forEach((c) => {
-              const specs = CLASS_FEATURE_DECISIONS[c.klass.id] || []
-              specs.forEach((d) => {
-                if ((c.level || 0) >= d.level) {
-                  const selected = classFeatureChoices[c.klass.id]?.[d.id]
-                  decisionNeeds.push({ klassId: c.klass.id, klassName: c.klass.name, decision: d, selected })
-                }
-              })
-            })
-
-            // Replacement pool for conflicts: show all skills; mark already-proficient as orange/disabled
-            const allSkillIds = SKILLS.map((s) => s.id)
-            const availableForReplacement = allSkillIds
-            // Background conflicts do not grant alternatives; only race replacements remain
-            const remainingReplacements = Math.max(0, raceConflicts.length - raceReplPicks.length)
-
-            const hasAnyPending = classNeeds.reduce((a, b) => a + b.need, 0) + remainingReplacements + decisionNeeds.filter(d => {
-              if (!d.selected) return true
-              if (Array.isArray(d.selected)) return d.selected.length < (d.decision.picks || 1)
-              return false
-            }).length > 0
-
-
-            return (
+          {/* Combined Progression (Multiclass) */}
+          {classes.length > 0 && (
+            <>
               <Card>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  style={{ position: 'absolute', top: 8, right: 8 }}
+                  onClick={() => setShowFullProgression(true)}
+                  title="View Fullscreen"
+                  aria-label="View progression table fullscreen"
+                >⛶</Button>
                 <CardHeader>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <CardTitle><Sparkles size={16} style={{ marginRight: 6 }} />Pending Choices</CardTitle>
-                    <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <Button size="sm" variant={showCompleted ? 'default' : 'outline'} onClick={() => setShowCompleted((v) => !v)}>
-                        {showCompleted ? 'Show Completed: On' : 'Show Completed: Off'}
-                      </Button>
-                    </div>
-                  </div>
+                  <CardTitle>Combined Progression</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div style={{ display: 'grid', gap: 12 }}>
-                    {!hasAnyPending && (
-                      <div style={{ fontSize: 12, color: '#64748b' }}>
-                        No pending choices. You can still review selections here.
-                      </div>
-                    )}
-                    {/* Background has no user choices; only show when viewing completed */}
-                    {showCompleted && (
-                      <div style={{ display: 'grid', gap: 8 }}>
-                        <div style={{ fontWeight: 600 }}>Background: {background?.name}</div>
-            {bgMissing.length > 0 && (
-                          <div style={{ fontSize: 12, color: '#64748b' }}>Grants: {bgMissing.map((s) => SKILLS.find(x => x.id === s)?.name || s).join(', ')} (will be applied)</div>
-                        )}
-            {bgConflicts.length > 0 && (
-                          <div style={{ fontSize: 12, color: '#64748b' }}>
-                            Conflicts detected: {bgConflicts.map((s) => SKILLS.find(x => x.id === s)?.name || s).join(', ')}. This background doesn't grant alternatives.
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {/* Race missing grants: render only if the race provides any skills */}
-                    {(raceSkills.length > 0) && (showCompleted || raceMissing.length > 0 || raceConflicts.length > 0) && (
-                      <div style={{ display: 'grid', gap: 8 }}>
-                        <div style={{ fontWeight: 600 }}>Race: {race?.name}</div>
-                        {raceMissing.length > 0 && (
-                          <div style={{ fontSize: 12, color: '#64748b' }}>Grants: {raceMissing.map((s) => SKILLS.find(x => x.id === s)?.name || s).join(', ')} (will be applied)</div>
-                        )}
-      {raceConflicts.length > 0 && (
-                          <div style={{ fontSize: 12, color: '#64748b' }}>
-                            Conflicts detected: {raceConflicts.map((s) => SKILLS.find(x => x.id === s)?.name || s).join(', ')}. Pick {raceConflicts.length} replacement{raceConflicts.length > 1 ? 's' : ''}:
-                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 6 }}>
-                              {availableForReplacement.map((sid) => {
-                                const selected = raceReplPicks.includes(sid)
-                                const selectedOther = bgReplPicks.includes(sid)
-                                const atMax = raceReplPicks.length >= raceConflicts.length
-        // Mark as already only if the skill is granted from a source other than this race replacement (ignore manual)
-        const sources = skillSources[sid] || []
-        const hasOtherSource = sources.some((s) => s !== 'race' && s !== 'race-pick' && s !== 'manual')
-                                const already = hasOtherSource && !selected
-                                const disabled = already || selectedOther || (atMax && !selected)
-                                const baseProps: any = {}
-                                if (already) {
-                                  baseProps.style = { background: '#f97316', color: 'white', borderColor: '#f97316' }
-                                }
-                                return (
-                                  <Button
-                                    key={sid}
-                                    size="sm"
-                                    variant={selected ? 'default' : 'outline'}
-                                    disabled={disabled}
-                                    onClick={() => {
-                                      if (already || selectedOther) return
-                                      setRaceReplPicks((prev) => selected
-                                        ? prev.filter((x) => x !== sid)
-                                        : (prev.length < raceConflicts.length ? [...prev, sid] : prev))
-                                      if (selected) removeSkillSource(sid, 'race-pick')
-                                      else addSkillSource(sid, 'race-pick')
-                                    }}
-                                    {...baseProps}
-                                  >{SKILLS.find(x => x.id === sid)?.name || sid}</Button>
-                                )
-                              })}
-                            </div>
-                            <div style={{ marginTop: 6 }}>Selected {raceReplPicks.length} / {raceConflicts.length}</div>
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {/* Class skill picks */}
-                    {classNeeds.filter(c => showCompleted || c.need > 0).length > 0 && (
-                      <div style={{ display: 'grid', gap: 8 }}>
-                        <div style={{ fontWeight: 600 }}>Class Skills</div>
-                        {classNeeds.filter(c => showCompleted || c.need > 0).map(({ klassId, klassName, need, count, options }) => (
-                          <div key={klassId} style={{ display: 'grid', gap: 6 }}>
-                            <div style={{ fontSize: 12, color: '#64748b' }}>
-                              {klassName}: {need > 0 ? `pick ${need}` : (showCompleted ? 'complete' : null)}
-                            </div>
-                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-            {options.map((sid) => {
-                                const current = classSkillPicks[klassId] || []
-                                const selected = current.includes(sid)
-                                // Treat this class's own grants as selectable (blue), but block if any other source grants it (ignore manual)
-                                const sources = skillSources[sid] || []
-                                const hasOtherSource = sources.some((s) => s !== `class:${klassId}` && s !== 'manual')
-                                const already = hasOtherSource && !selected
-        const atMax = current.length >= count
-                                const disabled = already || (atMax && !selected)
-                                const baseProps: any = {}
-                                if (already) {
-                                  baseProps.style = { background: '#f97316', color: 'white', borderColor: '#f97316' }
-                                }
-                                return (
-                                  <Button
-                                    key={sid}
-                                    size="sm"
-                                    variant={selected ? 'default' : 'outline'}
-                                    disabled={disabled}
-                                    onClick={() => {
-                                      if (already) return
-                    setClassSkillPicks((prev) => {
-                                        const arr = [...(prev[klassId] || [])]
-                                        const nextArr = selected
-                                          ? arr.filter((x) => x !== sid)
-                      : (arr.length < count ? [...arr, sid] : arr)
-                                        return { ...prev, [klassId]: nextArr }
-                                      })
-              if (selected) removeSkillSource(sid, `class:${klassId}`)
-              else addSkillSource(sid, `class:${klassId}`)
-                                    }}
-                                    {...baseProps}
-                                  >{SKILLS.find(x => x.id === sid)?.name || sid}</Button>
-                                )
-                              })}
-                            </div>
-                            <div style={{ fontSize: 12, color: '#64748b' }}>Selected {(classSkillPicks[klassId] || []).length} / {count}</div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-
-                    {/* Class feature decisions (e.g., Fighting Style) */}
-                    {(() => {
-                      // Rebuild within render scope to keep types simple
-                      type PendingDecision = { klassId: string; klassName: string; decision: ClassFeatureDecisionSpec; selected?: string | string[] }
-                      const decisionNeeds: PendingDecision[] = []
-                      classes.forEach((c) => {
-                        const specs = CLASS_FEATURE_DECISIONS[c.klass.id] || []
-                        specs.forEach((d) => {
-                          if ((c.level || 0) >= d.level) {
-                            const selected = classFeatureChoices[c.klass.id]?.[d.id]
-                            decisionNeeds.push({ klassId: c.klass.id, klassName: c.klass.name, decision: d, selected })
-                          }
-                        })
-                      })
-                      if (!decisionNeeds.length) return null
-                      const visible = decisionNeeds.filter(({ decision, selected }) => {
-                        const need = decision.picks || 1
-                        const have = Array.isArray(selected) ? selected.length : (selected ? 1 : 0)
-                        return showCompleted || have < need
-                      })
-                      if (!visible.length) return null
-                      return (
-                        <div style={{ display: 'grid', gap: 8 }}>
-                          <div style={{ fontWeight: 600 }}>Class Feature Decisions</div>
-                          {visible.map(({ klassId, klassName, decision, selected }) => (
-                            <div key={`${klassId}:${decision.id}`} style={{ display: 'grid', gap: 6 }}>
-                              <div style={{ fontSize: 12, color: '#64748b' }}>
-                                {klassName}: {decision.name} {(() => {
-                                  const need = decision.picks || 1
-                                  const have = Array.isArray(selected) ? selected.length : (selected ? 1 : 0)
-                                  return have >= need ? (showCompleted ? '(complete)' : '') : `(pick ${need - have} more)`
-                                })()}
-                              </div>
-                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                                {decision.options.map((opt) => {
-                                  const need = decision.picks || 1
-                                  const selArr = Array.isArray(selected) ? selected : (selected ? [selected] : [])
-                                  const isSelected = selArr.includes(opt.id)
-                                  const atMax = selArr.length >= need
-                                  return (
-                                    <Button
-                                      key={opt.id}
-                                      size="sm"
-                                      variant={isSelected ? 'default' : 'outline'}
-                                      disabled={!isSelected && atMax}
-                                      onClick={() => {
-                                        setClassFeatureChoices((prev) => {
-                                          const byClass = { ...(prev[klassId] || {}) }
-                                          const cur = byClass[decision.id]
-                                          const curArr = Array.isArray(cur) ? cur : (cur ? [cur] : [])
-                                          let next: string[]
-                                          if (isSelected) {
-                                            next = curArr.filter((x) => x !== opt.id)
-                                          } else {
-                                            next = atMax ? curArr : [...curArr, opt.id]
-                                          }
-                                          byClass[decision.id] = need === 1 ? (next[0] || '') : next
-                                          return { ...prev, [klassId]: byClass }
-                                        })
-                                      }}
-                                      title={opt.text}
-                                      style={{ opacity: !isSelected && atMax ? 0.6 : 1 }}
-                                    >{opt.name}</Button>
-                                  )
-                                })}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )
-                    })()}
-
-                    <div style={{ display: 'flex', gap: 8 }}>
-                      <Button size="sm" variant="ghost" onClick={() => {
-                        // Clear local pick state only
-                        setBgReplPicks([]); setRaceReplPicks([]); setClassSkillPicks({}); setClassFeatureChoices({})
-                      }}>Reset Selections</Button>
-                    </div>
-                  </div>
+                  {/* Branch selector (pull roots from ProgressionPlanner storage) */}
+                  <BranchProgressionSelector characterName={name} currentClasses={classes} onSelectSequence={(seq, order) => { setClasses(seq); setClassLevelOrder(order) }} />
+                  {renderProgressionTable(
+                    importedPlanSequence.length
+                      ? importedPlanSequence.map(e => ({ klass: e.klass, level: 1, subclass: e.subclass, future: e.future }))
+                      : reconstructSequence(classes, classLevelOrder)
+                  )}
+                  <div style={{ fontSize: 11, color: '#94a3b8' }}>Levels are ordered by the sequence of classes shown above. Reordering support could be added later.</div>
                 </CardContent>
               </Card>
-            )
-          })()}
+              {showFullProgression && (
+                <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(15,23,42,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <div style={{ background: 'var(--card-bg)', borderRadius: 16, boxShadow: '0 8px 32px rgba(0,0,0,0.25)', padding: 32, maxWidth: '90vw', maxHeight: '90vh', overflow: 'auto', position: 'relative' }}>
+                    <Button size="sm" variant="outline" style={{ position: 'absolute', top: 16, right: 16, zIndex: 10 }} onClick={() => setShowFullProgression(false)}>Close</Button>
+                    <div style={{ fontWeight: 700, fontSize: 20, marginBottom: 16 }}>Custom Progression Table</div>
+                    {renderProgressionTable(
+                      importedPlanSequence.length
+                        ? importedPlanSequence.map(e => ({ klass: e.klass, level: 1, subclass: e.subclass, future: e.future }))
+                        : reconstructSequence(classes, classLevelOrder),
+                      true
+                    )}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* Combined Progression now rendered near top via renderProgressionTable() */}
 
           {/* Class Feature Choices (appears only when needed) */}
           {pendingSubclassChoices.length ? (
@@ -2234,16 +1998,18 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
             </Card>
           ) : null}
 
-          {/* ASI & Feats */}
+          {/* ASI & Feats (hidden if feats disabled; ASI portion still shows but feat list suppressed) */}
           {(() => {
             // Count available ASI slots from classes at levels 4,8,12,16,19 (demo rule).
             const asiLevels = new Set([4, 8, 12, 16, 19])
             const asiSlots = classes.reduce((sum, c) => sum + Array.from(asiLevels).filter(lv => c.level >= lv).length, 0)
             // Each slot provides 2 points for ASIs or 1 feat (which consumes 2 points)
-            const totalPoints = asiSlots * 2
+            // Variant Human grants a bonus feat only when feats are enabled (variant gated off otherwise)
+            const bonusFeatPoints = (race?.id === 'human-variant' && featsEnabled) ? 2 : 0
+            const totalPoints = asiSlots * 2 + bonusFeatPoints
             const spentPoints = (['str','dex','con','int','wis','cha'] as AbilityKey[]).reduce((s, k) => s + (asiAlloc[k] || 0), 0) + (selectedFeats.length * 2)
             const remaining = Math.max(0, totalPoints - spentPoints)
-            const fa = finalAbility(abilities, race, asiAlloc, { tceActive: rules.tceCustomAsi, tceMode, tceAlloc })
+            const fa = finalAbility(abilities, race, asiAlloc, { tceActive: tceCustomAsi, tceMode, tceAlloc, customOrigin, originAlloc })
             const canIncrease = (k: AbilityKey) => remaining > 0 && fa[k] + 1 <= 20
             const canDecrease = (k: AbilityKey) => (asiAlloc[k] || 0) > 0
             const toggleFeat = (id: string) => {
@@ -2254,8 +2020,8 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
                 return [...prev, id]
               })
             }
-            // Only show card if there is at least one ASI slot from any class
-            if (asiSlots === 0) return null
+            // Show card if any ASI slot OR variant human bonus feat present
+            if (asiSlots === 0 && bonusFeatPoints === 0) return null
             return (
               <Card>
                 <CardHeader><CardTitle><Sparkles size={16} style={{ marginRight: 6 }} />ASI & Feats</CardTitle></CardHeader>
@@ -2265,59 +2031,119 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
                       <Pill>ASI slots {asiSlots}</Pill>
                       <Pill>Points {spentPoints} / {totalPoints}</Pill>
                       <Pill>Remaining {remaining}</Pill>
+                      {bonusFeatPoints ? <Pill style={{ background: '#6366f1', color: 'white' }}>Variant Human Feat</Pill> : null}
                     </div>
-                    {/* ASI allocation */}
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 8 }}>
-                      {(['str','dex','con','int','wis','cha'] as AbilityKey[]).map((k) => (
-                        <div key={k} style={{ padding: 8, borderRadius: 10, border: '1px solid var(--muted-border)', background: 'var(--card-bg)', display: 'grid', gap: 6 }}>
-                          <div style={{ fontSize: 10, textTransform: 'uppercase', color: '#64748b' }}>{k}</div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                            <Button size="icon" variant="outline" onClick={() => setAsiAlloc((prev) => ({ ...prev, [k]: Math.max(0, (prev[k] || 0) - 1) }))} disabled={!canDecrease(k)}>−</Button>
-                            <div style={{ fontWeight: 600, minWidth: 44, textAlign: 'center' }}>{fa[k]}{asiAlloc[k] ? ` (+${asiAlloc[k]})` : ''}</div>
-                            <Button size="icon" variant="outline" onClick={() => {
-                              if (!canIncrease(k)) return
-                              setAsiAlloc((prev) => ({ ...prev, [k]: (prev[k] || 0) + 1 }))
-                            }} disabled={!canIncrease(k)}>+</Button>
+                    {bonusFeatPoints ? (
+                      <div style={{ fontSize: 12, color: '#64748b' }}>Variant Human grants one bonus feat at 1st level.</div>
+                    ) : null}
+                    {/* ASI allocation (suppressed for Variant Human at level 1 bonus feat only) */}
+                    {asiSlots > 0 ? (
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 8 }}>
+                        {(['str','dex','con','int','wis','cha'] as AbilityKey[]).map((k) => (
+                          <div key={k} style={{ padding: 8, borderRadius: 10, border: '1px solid var(--muted-border)', background: 'var(--card-bg)', display: 'grid', gap: 6 }}>
+                            <div style={{ fontSize: 10, textTransform: 'uppercase', color: '#64748b' }}>{k}</div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                              <Button size="icon" variant="outline" onClick={() => setAsiAlloc((prev) => ({ ...prev, [k]: Math.max(0, (prev[k] || 0) - 1) }))} disabled={!canDecrease(k)}>−</Button>
+                              <div style={{ fontWeight: 600, minWidth: 44, textAlign: 'center' }}>{fa[k]}{asiAlloc[k] ? ` (+${asiAlloc[k]})` : ''}</div>
+                              <Button size="icon" variant="outline" onClick={() => {
+                                if (!canIncrease(k)) return
+                                setAsiAlloc((prev) => ({ ...prev, [k]: (prev[k] || 0) + 1 }))
+                              }} disabled={!canIncrease(k)}>+</Button>
+                            </div>
+                            <div style={{ fontSize: 12, color: '#64748b' }}>mod {mod(fa[k]) >= 0 ? '+' : ''}{mod(fa[k])}</div>
                           </div>
-                          <div style={{ fontSize: 12, color: '#64748b' }}>mod {mod(fa[k]) >= 0 ? '+' : ''}{mod(fa[k])}</div>
-                        </div>
-                      ))}
-                    </div>
-                    {/* Feats */}
-                    <div style={{ display: 'grid', gap: 6 }}>
-                      <div style={{ fontSize: 12, color: '#64748b' }}>Feats (each costs 2 points)</div>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                        {FEATS.map((f) => {
-                          const sel = selectedFeats.includes(f.id)
-                          const full = remaining < 2
-                          return (
-                            <Button key={f.id} size="sm" variant={sel ? 'default' : 'outline'} disabled={!sel && full} onClick={() => toggleFeat(f.id)} title={f.text} style={{ opacity: !sel && full ? 0.6 : 1 }}>{f.name}</Button>
-                          )
-                        })}
+                        ))}
                       </div>
-                      {/* Prodigy configuration */}
-                      {selectedFeats.includes('prodigy') ? (
-                        <div style={{ marginTop: 6, padding: 8, borderRadius: 8, border: '1px solid #e2e8f0', background: '#fff' }}>
-                          <div style={{ fontSize: 12, color: '#64748b', marginBottom: 6 }}>Prodigy: choose a skill to gain proficiency (or expertise if already proficient)</div>
-                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                            {SKILLS.map((s) => {
-                              const chosen = featChoices.prodigySkill === s.id
-                              return (
-                                <Button key={s.id} size="sm" variant={chosen ? 'default' : 'outline'} onClick={() => setFeatChoices((prev) => ({ ...prev, prodigySkill: s.id }))}>{s.name}</Button>
-                              )
-                            })}
-                          </div>
-                          {featChoices.prodigySkill ? (
-                            <div style={{ marginTop: 6, fontSize: 12, color: '#64748b' }}>Selected: {SKILLS.find(x => x.id === featChoices.prodigySkill)?.name}</div>
-                          ) : null}
+                    ) : (bonusFeatPoints ? (
+                      <div style={{ fontSize: 12, color: '#64748b' }}>Variant Human: you gain a bonus feat at 1st level instead of increasing ability scores. Ability Score Increases will appear at later levels.</div>
+                    ) : null)}
+                    {featsEnabled ? (
+                      <div style={{ display: 'grid', gap: 6 }}>
+                        <div style={{ fontSize: 12, color: '#64748b' }}>Feats (each costs 2 points)</div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                          {FEATS.map((f) => {
+                            const sel = selectedFeats.includes(f.id)
+                            const full = remaining < 2
+                            return (
+                              <Button key={f.id} size="sm" variant={sel ? 'default' : 'outline'} disabled={!sel && full} onClick={() => toggleFeat(f.id)} title={f.text} style={{ opacity: !sel && full ? 0.6 : 1 }}>{f.name}</Button>
+                            )
+                          })}
                         </div>
-                      ) : null}
-                    </div>
-                    {(selectedFeats.length > 0) ? (
+                        {selectedFeats.includes('prodigy') ? (
+                          <div style={{ marginTop: 6, padding: 8, borderRadius: 8, border: '1px solid #e2e8f0', background: '#fff' }}>
+                            <div style={{ fontSize: 12, color: '#64748b', marginBottom: 6 }}>Prodigy: choose a skill to gain proficiency (or expertise if already proficient)</div>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                              {SKILLS.map((s) => {
+                                const chosen = featChoices.prodigySkill === s.id
+                                return (
+                                  <Button key={s.id} size="sm" variant={chosen ? 'default' : 'outline'} onClick={() => setFeatChoices((prev) => ({ ...prev, prodigySkill: s.id }))}>{s.name}</Button>
+                                )
+                              })}
+                            </div>
+                            {featChoices.prodigySkill ? (
+                              <div style={{ marginTop: 6, fontSize: 12, color: '#64748b' }}>Selected: {SKILLS.find(x => x.id === featChoices.prodigySkill)?.name}</div>
+                            ) : null}
+                          </div>
+                        ) : null}
+                        {selectedFeats.includes('resilient') ? (
+                          <div style={{ marginTop: 6, padding: 8, borderRadius: 8, border: '1px solid #e2e8f0', background: '#fff' }}>
+                            <div style={{ fontSize: 12, color: '#64748b', marginBottom: 6 }}>Resilient: choose an ability (grants +1 and saving throw proficiency)</div>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                              {(['str','dex','con','int','wis','cha'] as AbilityKey[]).map((ab) => {
+                                const chosen = featChoices.resilientAbility === ab
+                                const alreadyProf = classes.some(c => (c.klass.saves || []).includes(ab))
+                                const style: React.CSSProperties | undefined = alreadyProf ? { borderColor: '#f97316', boxShadow: '0 0 0 1px #f97316 inset' } : undefined
+                                return (
+                                  <Button
+                                    key={ab}
+                                    size="sm"
+                                    variant={chosen ? 'default' : 'outline'}
+                                    onClick={() => setFeatChoices(prev => ({ ...prev, resilientAbility: ab }))}
+                                    style={style}
+                                    title={alreadyProf ? 'Already proficient in this save (discouraged choice)' : undefined}
+                                  >{ab.toUpperCase()}</Button>
+                                )
+                              })}
+                            </div>
+                            {featChoices.resilientAbility ? (
+                              <div style={{ marginTop: 6, fontSize: 12, color: '#64748b' }}>Selected: {String(featChoices.resilientAbility).toUpperCase()}</div>
+                            ) : null}
+                          </div>
+                        ) : null}
+                        {selectedFeats.includes('skilled') ? (
+                          <div style={{ marginTop: 6, padding: 8, borderRadius: 8, border: '1px solid #e2e8f0', background: '#fff' }}>
+                            <div style={{ fontSize: 12, color: '#64748b', marginBottom: 6 }}>Skilled: choose up to three skills to gain proficiency</div>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                              {SKILLS.map(s => {
+                                const chosenArr: string[] = featChoices.skilledSkills || []
+                                const chosen = chosenArr.includes(s.id)
+                                const limitReached = chosenArr.length >= 3 && !chosen
+                                return (
+                                  <Button
+                                    key={s.id}
+                                    size="sm"
+                                    variant={chosen ? 'default' : 'outline'}
+                                    disabled={limitReached}
+                                    onClick={() => setFeatChoices(prev => {
+                                      const curr: string[] = prev.skilledSkills || []
+                                      if (curr.includes(s.id)) return { ...prev, skilledSkills: curr.filter(x => x !== s.id) }
+                                      if (curr.length >= 3) return prev
+                                      return { ...prev, skilledSkills: [...curr, s.id] }
+                                    })}
+                                  >{s.name}</Button>
+                                )
+                              })}
+                            </div>
+                            <div style={{ marginTop: 6, fontSize: 12, color: '#64748b' }}>Selected { (featChoices.skilledSkills || []).length } / 3</div>
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : null}
+                    {((featsEnabled || race?.id === 'human-variant') && selectedFeats.length > 0) ? (
                       <div style={{ fontSize: 12, color: '#64748b' }}>Selected feats: {selectedFeats.map(fid => FEATS.find(f => f.id === fid)?.name || fid).join(', ')}</div>
                     ) : null}
                     <div style={{ display: 'flex', gap: 8 }}>
-                      <Button size="sm" variant="ghost" onClick={() => { setAsiAlloc({ str: 0, dex: 0, con: 0, int: 0, wis: 0, cha: 0 }); setSelectedFeats([]) }}>Reset ASI/Feats</Button>
+                      <Button size="sm" variant="ghost" onClick={() => { setAsiAlloc({ str: 0, dex: 0, con: 0, int: 0, wis: 0, cha: 0 }); if (featsEnabled) setSelectedFeats([]) }}>Reset ASI/Feats</Button>
                     </div>
                   </div>
                 </CardContent>
@@ -2332,7 +2158,7 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
             if (!casterEntries.length) return null
             // Helper to get casting ability per class
             const castingMod = (klassId: string) => {
-              const fa = finalAbility(abilities, race, asiAlloc, { tceActive: rules.tceCustomAsi, tceMode, tceAlloc })
+              const fa = finalAbility(abilities, race, asiAlloc, { tceActive: tceCustomAsi, tceMode, tceAlloc, customOrigin, originAlloc })
               const ab = klassId === 'bard' ? fa.cha
                 : klassId === 'cleric' ? fa.wis
                 : klassId === 'druid' ? fa.wis
@@ -2723,7 +2549,7 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
                   </div>
 
                   {(() => {
-                    const fa = finalAbility(abilities, race, asiAlloc, { tceActive: rules.tceCustomAsi, tceMode, tceAlloc })
+                    const fa = finalAbility(abilities, race, asiAlloc, { tceActive: tceCustomAsi, tceMode, tceAlloc, customOrigin, originAlloc })
                     const pb = proficiencyBonus(derived.totalLevel)
                     // Ability sort order preference (CHA, CON, DEX, INT, STR, WIS)
                     const abilityOrder: AbilityKey[] = ['cha', 'con', 'dex', 'int', 'str', 'wis']
@@ -2735,6 +2561,10 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
                       if (selectedFeats.includes('prodigy') && featChoices.prodigySkill === s.id) {
                         if (t === 'none') t = 'prof'
                         else if (t === 'prof') t = 'expert'
+                      }
+                      // Feat: Skilled grants straight proficiency (does not stack to expertise here)
+                      if (selectedFeats.includes('skilled') && (featChoices.skilledSkills || []).includes(s.id)) {
+                        if (t === 'none') t = 'prof'
                       }
                       const add = t === 'half' ? Math.floor(pb / 2) : t === 'prof' ? pb : t === 'expert' ? pb * 2 : 0
                       const total = base + add
@@ -2808,31 +2638,96 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
                       }
                       displayItems = interleaved
                     }
+                    // Local expansion state for skills (keyed by id). We keep this ephemeral; not persisted.
+                    const [expandedSkills, setExpandedSkills] = React.useState<Record<string, boolean>>({})
+                    const toggleSkill = (id: string) => setExpandedSkills((m) => ({ ...m, [id]: !m[id] }))
                     return (
-                      <div style={containerStyle}>
-                        {displayItems.map((s) => (
-                          <div key={s.id} style={cardBaseStyle}>
-                            <div style={{ display: 'grid', gap: 2 }}>
-                              <div style={{ fontWeight: 600, whiteSpace: 'nowrap' }}>{s.name}</div>
-                              <div style={{ fontSize: 11, color: '#64748b', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>{s.ability}</div>
+                      <div style={{ ...containerStyle }}>
+                        {displayItems.map((s) => {
+                          const skillMeta = SKILLS.find((k) => k.id === s.id) as any // Skill type (has description & subSkills)
+                          const isExpanded = !!expandedSkills[s.id]
+                          return (
+                            <div key={s.id} style={{ ...cardBaseStyle, flexDirection: 'column', alignItems: 'stretch', gap: 6 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+                                  <div style={{ display: 'grid', gap: 2 }}>
+                                    <div style={{ fontWeight: 600, whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 4 }}>
+                                      <span>{s.name}</span>
+                                      {(skillMeta?.description || skillMeta?.subSkills?.length) && (
+                                        <Button
+                                          size="sm"
+                                          variant="ghost"
+                                          onClick={() => toggleSkill(s.id)}
+                                          style={{ paddingInline: 6 }}
+                                          title={isExpanded ? 'Hide details' : 'Show details'}
+                                        >
+                                          {isExpanded ? 'ⓘ' : 'ⓘ'}
+                                        </Button>
+                                      )}
+                                    </div>
+                                    <div style={{ fontSize: 11, color: '#64748b', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>{s.ability}</div>
+                                  </div>
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8, whiteSpace: 'nowrap' }}>
+                                  <Pill>{s.total >= 0 ? `+${s.total}` : s.total}</Pill>
+                                  <Button
+                                    size="sm"
+                                    variant={s.t === 'none' ? 'outline' : 'default'}
+                                    onClick={() => {
+                                      const hasManual = (skillSources[s.id] || []).includes('manual')
+                                      if (hasManual) {
+                                        removeSkillSource(s.id, 'manual')
+                                      } else {
+                                        addSkillSource(s.id, 'manual')
+                                      }
+                                    }}
+                                  >{s.t === 'none' ? 'None' : s.t === 'half' ? 'Half' : s.t === 'prof' ? 'Prof' : 'Expertise'}</Button>
+                                </div>
+                              </div>
+                              {isExpanded && (
+                                <div style={{ display: 'grid', gap: 6, fontSize: 12 }}>
+                                  {skillMeta?.description && (
+                                    <div style={{ lineHeight: 1.3, color: 'var(--muted-fg)' }}>{skillMeta.description}</div>
+                                  )}
+                                  {skillMeta?.subSkills?.length ? (
+                                    <div style={{ display: 'grid', gap: 4 }}>
+                                      {skillMeta.subSkills.map((ss: any) => (
+                                        <div
+                                          key={ss.id}
+                                          style={{
+                                            display: 'flex',
+                                            alignItems: 'flex-start',
+                                            justifyContent: 'space-between',
+                                            gap: 8,
+                                            background: 'var(--subtle-bg)',
+                                            padding: '4px 6px',
+                                            borderRadius: 6,
+                                          }}
+                                        >
+                                          <div style={{ flex: 1 }}>
+                                            <div style={{ fontWeight: 500 }}>{ss.name}</div>
+                                            {ss.description && (
+                                              <div style={{ opacity: 0.75, lineHeight: 1.25 }}>{ss.description}</div>
+                                            )}
+                                          </div>
+                                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
+                                            <Pill>{s.total >= 0 ? `+${s.total}` : s.total}</Pill>
+                                            {typeof ss.bonusAdjust === 'number' && ss.bonusAdjust !== 0 && (
+                                              <div style={{ fontSize: 10, color: ss.bonusAdjust > 0 ? 'green' : 'crimson' }}>
+                                                {ss.bonusAdjust > 0 ? '+' : ''}
+                                                {ss.bonusAdjust}
+                                              </div>
+                                            )}
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  ) : null}
+                                </div>
+                              )}
                             </div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, whiteSpace: 'nowrap' }}>
-                              <Pill>{s.total >= 0 ? `+${s.total}` : s.total}</Pill>
-                              <Button
-                                size="sm"
-                                variant={s.t === 'none' ? 'outline' : 'default'}
-                                onClick={() => {
-                                  const hasManual = (skillSources[s.id] || []).includes('manual')
-                                  if (hasManual) {
-                                    removeSkillSource(s.id, 'manual')
-                                  } else {
-                                    addSkillSource(s.id, 'manual')
-                                  }
-                                }}
-                              >{s.t === 'none' ? 'None' : s.t === 'half' ? 'Half' : s.t === 'prof' ? 'Prof' : 'Expertise'}</Button>
-                            </div>
-                          </div>
-                        ))}
+                          )
+                        })}
                       </div>
                     )
                   })()}
@@ -2863,8 +2758,8 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
                 {/* Catalog column */}
                 <div style={{ display: 'grid', gap: 8 }}>
                   <div style={{ fontSize: 12, color: '#64748b' }}>Catalog</div>
-                  {/* Search + Filters toggle */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  {/* Search + Filters + Sort toggles */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                     <input
                       placeholder="Search catalog..."
                       value={catalogQuery}
@@ -2876,7 +2771,28 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
                       variant={catalogFiltersOpen || catalogTags.length ? 'default' : 'outline'}
                       onClick={() => setCatalogFiltersOpen((v) => !v)}
                     >Filters{catalogTags.length ? ` (${catalogTags.length})` : ''}</Button>
+                    <Button
+                      size="sm"
+                      variant={catalogSortOpen ? 'default' : 'outline'}
+                      onClick={() => setCatalogSortOpen(o => !o)}
+                    >Sort</Button>
                   </div>
+                  {/* Sort controls (collapsible) */}
+                  {catalogSortOpen && (
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                      <select value={catalogSort} onChange={(e) => setCatalogSort(e.target.value as any)} style={{ ...inp, flex: 1, minWidth: 140 }}>
+                        <option value="alpha">Alphabetical</option>
+                        <option value="weight">Weight</option>
+                        <option value="cost">Cost (gp)</option>
+                        <option value="damageDie">Damage (avg)</option>
+                        <option value="ac">AC</option>
+                        <option value="hands">Hands</option>
+                      </select>
+                      <Button size="sm" variant="outline" onClick={() => setCatalogSortDir(d => d === 'asc' ? 'desc' : 'asc')}>
+                        {catalogSortDir === 'asc' ? 'Asc' : 'Desc'}
+                      </Button>
+                    </div>
+                  )}
                   {/* Tag filters (collapsible) */}
                   {catalogFiltersOpen ? (
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
@@ -2928,7 +2844,7 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
         </div>
 
     {/* Right: Live Summary */}
-  <aside style={{ display: 'grid', gap: 12, position: 'sticky', top: 76, flex: '0 0 420px', width: 420, minWidth: 420, boxSizing: 'border-box' }}>
+  <aside className="no-scrollbar" style={{ display: 'grid', gap: 12, position: 'sticky', top: 76, flex: '0 0 420px', width: 420, minWidth: 420, boxSizing: 'border-box', maxHeight: 'calc(100vh - 100px)', overflowY: 'auto', paddingRight: 4 }}>
           <Card>
             <CardHeader><CardTitle><Scale size={16} style={{ marginRight: 6 }} />Live Summary</CardTitle></CardHeader>
             <CardContent>
@@ -2948,6 +2864,14 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
                 <Labeled label="HP @lvl"><Pill>{derived.hp}</Pill></Labeled>
                 <Labeled label="AC"><Pill>{derived.ac}</Pill></Labeled>
                 <Labeled label="Initiative"><Pill>{derived.initiative >= 0 ? `+${derived.initiative}` : derived.initiative}</Pill></Labeled>
+                {derived.barbarianLevel ? (
+                  <Labeled label="Rage">
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                      <Pill>{derived.rageUses === 'unlimited' ? '∞ uses' : `${derived.rageUses} uses`}</Pill>
+                      <Pill style={{ background: '#fee2e2', color: '#991b1b' }}>+{derived.rageDamageBonus} dmg</Pill>
+                    </div>
+                  </Labeled>
+                ) : null}
                 <Labeled label="Background"><div>{background?.name || '—'}</div></Labeled>
               </div>
 
@@ -2958,8 +2882,8 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
           {(['str','dex','con','int','wis','cha'] as AbilityKey[]).map((k) => (
                     <div key={k} style={{ padding: 8, borderRadius: 12, border: '1px solid var(--muted-border)', background: 'var(--card-bg)', display: 'grid', gap: 6 }}>
                       <div style={{ fontSize: 10, textTransform: 'uppercase', color: '#64748b' }}>{k}</div>
-                      <div style={{ fontWeight: 600 }}>{finalAbility(abilities, race, asiAlloc, { tceActive: rules.tceCustomAsi, tceMode, tceAlloc })[k]}</div>
-            <div style={{ fontSize: 12, color: '#64748b' }}>mod {mod(finalAbility(abilities, race, asiAlloc, { tceActive: rules.tceCustomAsi, tceMode, tceAlloc })[k]) >= 0 ? '+' : ''}{mod(finalAbility(abilities, race, asiAlloc, { tceActive: rules.tceCustomAsi, tceMode, tceAlloc })[k])}</div>
+                      <div style={{ fontWeight: 600 }}>{finalAbility(abilities, race, asiAlloc, { tceActive: tceCustomAsi, tceMode, tceAlloc, customOrigin, originAlloc })[k]}</div>
+            <div style={{ fontSize: 12, color: '#64748b' }}>mod {mod(finalAbility(abilities, race, asiAlloc, { tceActive: tceCustomAsi, tceMode, tceAlloc, customOrigin, originAlloc })[k]) >= 0 ? '+' : ''}{mod(finalAbility(abilities, race, asiAlloc, { tceActive: tceCustomAsi, tceMode, tceAlloc, customOrigin, originAlloc })[k])}</div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                         <span style={{ fontSize: 11, color: '#64748b' }}>Save</span>
                         <Pill>{derived.saves[k] >= 0 ? `+${derived.saves[k]}` : derived.saves[k]}</Pill>
@@ -3116,6 +3040,18 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
                   ) : (
                     <div style={{ color: '#94a3b8' }}>No racial features.</div>
                   )}
+                  {/* Innate racial spells */}
+                  {race.spells?.length ? (
+                    <div style={{ padding: 8, borderRadius: 12, border: '1px solid var(--muted-border)', background: 'var(--card-bg)' }}>
+                      <div style={{ fontWeight: 600 }}>Innate Spells</div>
+                      <div style={{ color: '#64748b', display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                        {race.spells.map(sid => {
+                          const sp = SPELLS.find(s => s.id === sid)
+                          return <span key={sid} style={{ background: 'var(--muted-bg)', padding: '2px 8px', borderRadius: 999, fontSize: 12 }}>{sp?.name || sid}</span>
+                        })}
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
               </div>
             </CardContent>
@@ -3367,6 +3303,10 @@ function finalAbility(abilities: Record<AbilityKey, number>, race: Race, asi?: R
       const inc = Math.max(0, Math.floor(alloc[k] || 0))
       out[k] = (out[k] || 10) + inc
     })
+  } else if (opts?.customOrigin) {
+    // Ignore native racial ASIs and apply custom +2 / +1 allocation
+    if (opts.originAlloc?.plus2) out[opts.originAlloc.plus2] = (out[opts.originAlloc.plus2] || 10) + 2
+    if (opts.originAlloc?.plus1 && opts.originAlloc.plus1 !== opts.originAlloc.plus2) out[opts.originAlloc.plus1] = (out[opts.originAlloc.plus1] || 10) + 1
   } else {
     Object.entries(race?.asis || {}).forEach(([k, inc]) => { const kk = k as AbilityKey; out[kk] = (out[kk] || 10) + (inc || 0) })
   }
@@ -3376,6 +3316,14 @@ function finalAbility(abilities: Record<AbilityKey, number>, race: Race, asi?: R
       out[k] = (out[k] || 10) + inc
     })
   }
+  // Feat: Resilient (+1 to chosen ability) applied after ASIs
+  try {
+    const bs = (window as any).builderState
+    if (bs?.selectedFeats?.includes('resilient')) {
+      const ra = bs.featChoices?.resilientAbility as AbilityKey | undefined
+      if (ra) out[ra] = (out[ra] || 10) + 1
+    }
+  } catch {}
   return out
 }
 
@@ -3386,20 +3334,21 @@ function ItemCard({ item, onAdd }: { item: Equipment; onAdd: () => void }) {
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         {item.type === 'weapon' && <Sword size={16} />}
         {item.type === 'shield' && <Shield size={16} />}
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, flex: 1, minWidth: 0 }}>
-          <span style={{ fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.name}</span>
-          <span style={{ fontSize: 12, color: '#64748b', whiteSpace: 'nowrap' }}>
-            {item.type === 'weapon' && (item as any).dmg}
-            {item.type === 'armor' && (
-              <>AC {(item as any).ac}{typeof (item as any).dexMax !== 'undefined' ? `, Dex cap ${((item as any).dexMax === (Infinity as any)) ? '—' : (item as any).dexMax}` : ''}</>
-            )}
-            {item.type === 'shield' && `+${(item as any).ac || 2} AC`}
-          </span>
-        </div>
-        <Button size="icon" onClick={onAdd} aria-label="Add"><Plus size={16} /></Button>
+        {item.type === 'armor' && <ArmorIcon size={16} />}
+        <span style={{ fontWeight: 600, flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.name}</span>
+        <Button size="icon" onClick={onAdd} aria-label={`Add ${item.name}`}><Plus size={16} /></Button>
+      </div>
+      <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.3 }}>
+        {item.type === 'weapon' && (item as any).dmg}
+        {item.type === 'armor' && (
+          <>AC {(item as any).ac}{typeof (item as any).dexMax !== 'undefined' ? `, Dex cap ${((item as any).dexMax === (Infinity as any)) ? '—' : (item as any).dexMax}` : ''}</>
+        )}
+        {item.type === 'shield' && `+${(item as any).ac || 2} AC`}
+        {(item as any).cost ? ` • ${(item as any).cost} gp` : ''}
+        {(item as any).weight ? ` • ${(item as any).weight} lb` : ''}
       </div>
       {tags?.length ? (
-        <div style={{ fontSize: 11, color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+        <div style={{ fontSize: 11, color: '#64748b', lineHeight: 1.2 }}>
           {tags.join(' • ')}
         </div>
       ) : null}
@@ -3413,6 +3362,7 @@ function LoadoutRow({ item, onRemove }: { item: Equipment; onRemove: () => void 
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
         {item.type === 'weapon' && <Sword size={16} />}
         {item.type === 'shield' && <Shield size={16} />}
+  {item.type === 'armor' && <ArmorIcon size={16} />}
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, flexWrap: 'wrap' }}>
           <div style={{ fontWeight: 600, fontSize: 13 }}>{item.name}</div>
           <div style={{ fontSize: 12, color: '#64748b' }}>
@@ -3437,7 +3387,7 @@ function LoadoutRow({ item, onRemove }: { item: Equipment; onRemove: () => void 
 
 // ComparePanel removed
 
-function ClassManager(props: { classes: Array<{ klass: Klass; level: number; subclass?: Subclass }>; onChange: (v: Array<{ klass: Klass; level: number; subclass?: Subclass }>) => void }) {
+function ClassManager(props: { classes: Array<{ klass: Klass; level: number; subclass?: Subclass }>; onChange: (v: Array<{ klass: Klass; level: number; subclass?: Subclass }>, levelAppend?: string[]) => void; abilities?: Record<AbilityKey, number>; race?: Race; asi?: Record<AbilityKey, number> }) {
   const [addOpen, setAddOpen] = useState(false)
   const addRef = useRef<HTMLDivElement | null>(null)
   const totalLevel = props.classes.reduce((s: number, c: { klass: Klass; level: number; subclass?: Subclass }) => s + c.level, 0)
@@ -3447,6 +3397,43 @@ function ClassManager(props: { classes: Array<{ klass: Klass; level: number; sub
     .slice()
     .sort((a, b) => a.name.localeCompare(b.name))
   const canAdd = totalLevel < maxTotal && available.length > 0
+
+  // Rules context for multiclass enforcement & flexible ASIs
+  const { multiclassReqs, tceCustomAsi, tceAlloc, tceMode } = useRules()
+
+  // Compute final abilities (needed only if enforcing requirements)
+  const finalAbils = useMemo(() => {
+    if (!multiclassReqs) return undefined
+    if (!props.abilities || !props.race) return undefined
+    return finalAbility(props.abilities, props.race, props.asi, { tceActive: tceCustomAsi, tceAlloc, tceMode })
+  }, [multiclassReqs, props.abilities, props.race, props.asi, tceCustomAsi, tceMode, JSON.stringify(tceAlloc)])
+
+  // Shared prereq map (keep in sync with validateChoice)
+  const prereqMap: Record<string, Array<{ ab: AbilityKey; min: number }> | ((fa: Record<AbilityKey, number>) => boolean)> = useMemo(() => ({
+    barbarian: [{ ab: 'str', min: 13 }],
+    bard: [{ ab: 'cha', min: 13 }],
+    cleric: [{ ab: 'wis', min: 13 }],
+    druid: [{ ab: 'wis', min: 13 }],
+    fighter: (fa) => (fa.str >= 13 || fa.dex >= 13),
+    monk: [{ ab: 'dex', min: 13 }, { ab: 'wis', min: 13 }],
+    paladin: [{ ab: 'str', min: 13 }, { ab: 'cha', min: 13 }],
+    ranger: [{ ab: 'dex', min: 13 }, { ab: 'wis', min: 13 }],
+    rogue: [{ ab: 'dex', min: 13 }],
+    sorcerer: [{ ab: 'cha', min: 13 }],
+    warlock: [{ ab: 'cha', min: 13 }],
+    wizard: [{ ab: 'int', min: 13 }],
+  }), [])
+
+  function meetsPrereq(k: Klass): boolean {
+    // Only restrict if enforcement ON and we're adding a second+ class (i.e. already have at least one class picked)
+    if (!multiclassReqs) return true
+    if (props.classes.length === 0) return true
+    if (!finalAbils) return true // missing data; fail open
+    const r = prereqMap[k.id]
+    if (!r) return true
+    if (typeof r === 'function') return r(finalAbils)
+    return (r as Array<{ ab: AbilityKey; min: number }>).every(req => (finalAbils[req.ab] || 0) >= req.min)
+  }
 
   useEffect(() => {
     if (!addOpen) return
@@ -3472,7 +3459,9 @@ function ClassManager(props: { classes: Array<{ klass: Klass; level: number; sub
     const other = totalLevel - props.classes[idx].level
     const clamped = clamp(next, 1, Math.max(1, Math.min(maxTotal - other, 20)))
     const out = props.classes.map((c, i) => (i === idx ? { ...c, level: clamped, subclass: c.subclass && clamped < (c.subclass?.unlockLevel || Infinity) ? undefined : c.subclass } : c))
-    props.onChange(out)
+    // If increasing level, append class id for each added level difference
+    const diff = clamped - props.classes[idx].level
+    props.onChange(out, diff > 0 ? Array(diff).fill(props.classes[idx].klass.id) : undefined)
   }
   function removeAt(idx: number) {
     const out = props.classes.filter((_, i) => i !== idx)
@@ -3482,7 +3471,7 @@ function ClassManager(props: { classes: Array<{ klass: Klass; level: number; sub
     if (props.classes.some((c) => c.klass.id === k.id)) return
     const other = totalLevel
     if (other >= maxTotal) return
-    props.onChange([...props.classes, { klass: k, level: 1 }])
+    props.onChange([...props.classes, { klass: k, level: 1 }], [k.id])
     setAddOpen(false)
   }
   function setSubclass(idx: number, sc?: Subclass) {
@@ -3503,11 +3492,30 @@ function ClassManager(props: { classes: Array<{ klass: Klass; level: number; sub
           {addOpen ? (
             <div style={{ position: 'absolute', right: 0, top: '100%', marginTop: 6, background: 'var(--card-bg)', border: '1px solid var(--muted-border)', borderRadius: 8, boxShadow: '0 8px 16px rgba(15,23,42,0.25)', zIndex: 20, minWidth: 220 }}>
               <div style={{ maxHeight: 240, overflowY: 'auto', display: 'grid' }}>
-                {available.map((k: Klass) => (
-                  <Button key={k.id} size="sm" variant="ghost" style={{ width: '100%', justifyContent: 'flex-start' }} onClick={() => addClass(k)}>
-                    {k.name}
-                  </Button>
-                ))}
+                {available.map((k: Klass) => {
+                  const ok = meetsPrereq(k)
+                  const disabled = !ok
+                  const prereq = prereqMap[k.id]
+                  let hint: string | undefined
+                  if (disabled && prereq) {
+                    if (typeof prereq === 'function') hint = 'Requires STR 13 or DEX 13'
+                    else hint = (prereq as Array<{ ab: AbilityKey; min: number }>).map(p => `${p.ab.toUpperCase()} ${p.min}+`).join(' & ')
+                  }
+                  return (
+                    <Button
+                      key={k.id}
+                      size="sm"
+                      variant="ghost"
+                      style={{ width: '100%', justifyContent: 'flex-start', opacity: disabled ? 0.4 : 1, cursor: disabled ? 'not-allowed' : 'pointer' }}
+                      disabled={disabled}
+                      title={disabled && hint ? `Requires: ${hint}` : undefined}
+                      onClick={() => { if (!disabled) addClass(k) }}
+                    >
+                      {k.name}
+                      {disabled && hint ? <span style={{ fontSize: 10, marginLeft: 6, color: '#64748b' }}>({hint})</span> : null}
+                    </Button>
+                  )
+                })}
               </div>
             </div>
           ) : null}
@@ -3569,6 +3577,9 @@ function RaceSelector(props: { value: Race; onChange: (v: Race) => void }) {
   const [showDwarfSubs, setShowDwarfSubs] = useState(false)
   const [showHalflingSubs, setShowHalflingSubs] = useState(false)
   const [showDragonSubs, setShowDragonSubs] = useState(false)
+  const [showTieflingSubs, setShowTieflingSubs] = useState(false)
+  const [showGenasiSubs, setShowGenasiSubs] = useState(false)
+  const [showGnomeSubs, setShowGnomeSubs] = useState(false)
   // Subrace buttons use a distinct color scheme to differentiate from parent buttons
   const subBtnStyle = (selected: boolean): React.CSSProperties =>
     selected
@@ -3578,6 +3589,7 @@ function RaceSelector(props: { value: Race; onChange: (v: Race) => void }) {
   const humanVar = RACES.find(r => r.id === 'human-variant')!
   const elfWood = RACES.find(r => r.id === 'elf-wood')!
   const elfHigh = RACES.find(r => r.id === 'elf-high')!
+  const elfDrow = RACES.find(r => r.id === 'elf-drow')!
   const dwarfHill = RACES.find(r => r.id === 'dwarf-hill')!
   const dwarfMountain = RACES.find(r => r.id === 'dwarf-mountain')!
   const halflingLightfoot = RACES.find(r => r.id === 'halfling-lightfoot')!
@@ -3585,14 +3597,33 @@ function RaceSelector(props: { value: Race; onChange: (v: Race) => void }) {
   const dragonbornBase = RACES.find(r => r.id === 'dragonborn')!
   const dragonVariants = RACES.filter(r => r.id.startsWith('dragonborn-'))
   const dragonVariantIds = new Set(dragonVariants.map(r => r.id))
-  const excludeIds = new Set<string>(['human','human-variant','elf-wood','elf-high','dwarf-hill','dwarf-mountain','halfling-lightfoot','halfling-stout','dragonborn', ...Array.from(dragonVariantIds)])
+  const tieflingBase = RACES.find(r => r.id === 'tiefling')!
+  const tieflingVariants = RACES.filter(r => r.id.startsWith('tiefling-') && r.id !== 'tiefling')
+  const tieflingVariantIds = new Set(tieflingVariants.map(r => r.id))
+  const genasiVariants = RACES.filter(r => r.id.startsWith('genasi-'))
+  const genasiVariantIds = new Set(genasiVariants.map(r => r.id))
+  const gnomeForest = RACES.find(r => r.id === 'gnome-forest')
+  const gnomeRock = RACES.find(r => r.id === 'gnome-rock')
+  const gnomeDeep = RACES.find(r => r.id === 'gnome-deep')
+  const excludeIds = new Set<string>([
+    'human','human-variant','elf-wood','elf-high','elf-drow','dwarf-hill','dwarf-mountain','halfling-lightfoot','halfling-stout','dragonborn','tiefling','gnome',
+  'gnome-forest','gnome-rock','gnome-deep',
+    ...Array.from(dragonVariantIds),
+    ...Array.from(tieflingVariantIds),
+    ...Array.from(genasiVariantIds)
+  ])
   const others = RACES.filter(r => !excludeIds.has(r.id))
   const isHumanSelected = props.value.id === 'human' || props.value.id === 'human-variant'
-  const isElfSelected = props.value.id === 'elf-wood' || props.value.id === 'elf-high'
+  const isElfSelected = props.value.id === 'elf-wood' || props.value.id === 'elf-high' || props.value.id === 'elf-drow'
   const isDwarfSelected = props.value.id === 'dwarf-hill' || props.value.id === 'dwarf-mountain'
   const isHalflingSelected = props.value.id === 'halfling-lightfoot' || props.value.id === 'halfling-stout'
   const isDragonSelected = props.value.id === 'dragonborn' || props.value.id.startsWith('dragonborn-')
+  const isTieflingSelected = props.value.id === 'tiefling' || props.value.id.startsWith('tiefling-')
+  const isGenasiSelected = props.value.id.startsWith('genasi-')
+  const isGnomeSelected = props.value.id.startsWith('gnome-')
 
+  // Need featsEnabled to gate Variant Human (requires feats optional rule)
+  const { featsEnabled } = useRules()
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
       {/* Human group button */}
@@ -3600,7 +3631,9 @@ function RaceSelector(props: { value: Race; onChange: (v: Race) => void }) {
       {showHumanSubs && (
         <>
           <Button size="sm" variant={props.value.id === 'human' ? 'default' : 'outline'} onClick={() => props.onChange(humanBase)} style={subBtnStyle(props.value.id === 'human')}>Base</Button>
-          <Button size="sm" variant={props.value.id === 'human-variant' ? 'default' : 'outline'} onClick={() => props.onChange(humanVar)} style={subBtnStyle(props.value.id === 'human-variant')}>Variant</Button>
+          {featsEnabled ? (
+            <Button size="sm" variant={props.value.id === 'human-variant' ? 'default' : 'outline'} onClick={() => props.onChange(humanVar)} style={subBtnStyle(props.value.id === 'human-variant')}>Variant</Button>
+          ) : null}
         </>
       )}
 
@@ -3610,6 +3643,7 @@ function RaceSelector(props: { value: Race; onChange: (v: Race) => void }) {
         <>
           <Button size="sm" variant={props.value.id === 'elf-wood' ? 'default' : 'outline'} onClick={() => props.onChange(elfWood)} style={subBtnStyle(props.value.id === 'elf-wood')}>Wood</Button>
           <Button size="sm" variant={props.value.id === 'elf-high' ? 'default' : 'outline'} onClick={() => props.onChange(elfHigh)} style={subBtnStyle(props.value.id === 'elf-high')}>High</Button>
+          <Button size="sm" variant={props.value.id === 'elf-drow' ? 'default' : 'outline'} onClick={() => props.onChange(elfDrow)} style={subBtnStyle(props.value.id === 'elf-drow')}>Drow</Button>
         </>
       )}
 
@@ -3645,6 +3679,43 @@ function RaceSelector(props: { value: Race; onChange: (v: Race) => void }) {
         </>
       )}
 
+      {/* Tiefling group button */}
+      <Button size="sm" variant={isTieflingSelected ? 'default' : 'outline'} onClick={() => setShowTieflingSubs(v => !v)}>Tiefling</Button>
+      {showTieflingSubs && (
+        <>
+          <Button size="sm" variant={props.value.id === 'tiefling' ? 'default' : 'outline'} onClick={() => props.onChange(tieflingBase)} style={subBtnStyle(props.value.id === 'tiefling')}>Base</Button>
+          {tieflingVariants.map(r => {
+            const label = r.name.replace(/^Tiefling\s*\(/, '').replace(/\)$/, '')
+            return (
+              <Button key={r.id} size="sm" variant={props.value.id === r.id ? 'default' : 'outline'} onClick={() => props.onChange(r)} style={subBtnStyle(props.value.id === r.id)}>{label}</Button>
+            )
+          })}
+        </>
+      )}
+
+  {/* Genasi group button */}
+      <Button size="sm" variant={isGenasiSelected ? 'default' : 'outline'} onClick={() => setShowGenasiSubs(v => !v)}>Genasi</Button>
+      {showGenasiSubs && (
+        <>
+          {genasiVariants.map(r => {
+            const label = r.name.replace(/^Genasi\s*\(/, '').replace(/\)$/, '')
+            return (
+              <Button key={r.id} size="sm" variant={props.value.id === r.id ? 'default' : 'outline'} onClick={() => props.onChange(r)} style={subBtnStyle(props.value.id === r.id)}>{label}</Button>
+            )
+          })}
+        </>
+      )}
+
+      {/* Gnome group button */}
+      <Button size="sm" variant={isGnomeSelected ? 'default' : 'outline'} onClick={() => setShowGnomeSubs(v => !v)}>Gnome</Button>
+      {showGnomeSubs && (
+        <>
+          {gnomeForest && <Button size="sm" variant={props.value.id === 'gnome-forest' ? 'default' : 'outline'} onClick={() => props.onChange(gnomeForest)} style={subBtnStyle(props.value.id === 'gnome-forest')}>Forest</Button>}
+          {gnomeRock && <Button size="sm" variant={props.value.id === 'gnome-rock' ? 'default' : 'outline'} onClick={() => props.onChange(gnomeRock)} style={subBtnStyle(props.value.id === 'gnome-rock')}>Rock</Button>}
+          {gnomeDeep && <Button size="sm" variant={props.value.id === 'gnome-deep' ? 'default' : 'outline'} onClick={() => props.onChange(gnomeDeep)} style={subBtnStyle(props.value.id === 'gnome-deep')}>Deep</Button>}
+        </>
+      )}
+
       {/* Other races remain direct buttons */}
       {others.map((r) => (
         <Button key={r.id} size="sm" variant={props.value.id === r.id ? 'default' : 'outline'} onClick={() => props.onChange(r)}>{r.name}</Button>
@@ -3660,6 +3731,7 @@ function SkillSourceGraph({ name, sources }: { name: string; sources: string[] }
     if (src === 'race') return 'Race'
     if (src === 'race-pick') return 'Race (replacement)'
     if (src === 'manual') return 'Manual'
+  if (src === 'feat:skilled') return 'Skilled (feat)'
     if (src.startsWith('class:')) {
       const id = src.split(':')[1]
       const cname = CLASSES.find(c => c.id === id)?.name || id
@@ -3734,7 +3806,7 @@ function CombinedSourcesGraph({ skills, skillSources, race, raceReplPicks, class
   if (includedSkillIds.size === 0) {
     return <div style={{ fontSize: 12, color: '#94a3b8' }}>No skills currently have sources or availability.</div>
   }
-  const isChoice = (src: string) => src === 'manual' || src === 'race-pick' || src.startsWith('class:')
+  const isChoice = (src: string) => src === 'manual' || src === 'race-pick' || src.startsWith('class:') || src.startsWith('feat:')
   // Gather unique source keys from skills that have sources, split by type
   const allKeys = Array.from(new Set(skills.filter((s) => skillHasSources(s.id)).flatMap((s) => (skillSources[s.id] || []))))
   const fixedKeys = allKeys.filter((k) => !isChoice(k))
