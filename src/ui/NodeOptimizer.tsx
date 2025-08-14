@@ -104,11 +104,11 @@ const WEAPON_PRESETS: Weapon[] = [
 ] as const
 
 // ----- Node UI helpers -----
-function PanelBox(props: { title: string; children: React.ReactNode }) {
+function PanelBox(props: { title: string; children: React.ReactNode; style?: React.CSSProperties }) {
   return (
-    <div style={{ minWidth: 260, background: '#f3f4f6', border: '1px solid #e2e8f0', borderRadius: 12 }}>
-      <div style={{ padding: 10, borderBottom: '1px solid #e2e8f0', fontWeight: 600, fontSize: 13 }}>{props.title}</div>
-      <div style={{ padding: 10, display: 'grid', gap: 8 }}>{props.children}</div>
+    <div style={{ minWidth: 200, background: '#f3f4f6', border: '1px solid #e2e8f0', borderRadius: 12, ...(props.style||{}) }}>
+      <div style={{ padding: 10, borderBottom: '1px solid #e2e8f0', fontWeight: 600, fontSize: 13, whiteSpace: 'normal', wordBreak: 'break-word' }}>{props.title}</div>
+      <div style={{ padding: 10, display: 'grid', gap: 8, whiteSpace: 'normal', wordBreak: 'break-word', overflowWrap: 'anywhere' }}>{props.children}</div>
     </div>
   )
 }
@@ -124,7 +124,6 @@ const AttackNode = ({ id, data }: any) => {
   }, [deleteElements, id])
   const weapon = WEAPON_PRESETS.find((w) => w.id === data.weaponId) ?? WEAPON_PRESETS[0]
   const actionType: 'action' | 'bonus' | 'free' | 'reaction' = data.actionType || 'action'
-  const attacks: number = data.attacks || 1 // retained for backward compatibility; no manual control now
   const grip: 'main' | 'off' | 'both' = data.grip || 'main'
   const set = (patch: any) => data.onChange(patch)
   if (data.collapsed) {
@@ -135,7 +134,7 @@ const AttackNode = ({ id, data }: any) => {
           onMouseDown={(e) => { e.stopPropagation(); e.preventDefault() }}
           onClick={handleDelete} title="Delete">×</button>
         <Handle type="target" position={Position.Left} />
-        <PanelBox title={`${actionType.toUpperCase()[0]}:${weapon.name}`}> 
+        <PanelBox title={`${actionType.toUpperCase()[0]}: ${weapon.name}`}>
           <div style={{ fontSize: 11, color: '#64748b' }}>{grip} hand • {weapon.dice}</div>
         </PanelBox>
         <Handle type="source" position={Position.Right} />
@@ -149,7 +148,7 @@ const AttackNode = ({ id, data }: any) => {
         onMouseDown={(e) => { e.stopPropagation(); e.preventDefault() }}
         onClick={handleDelete} title="Delete">×</button>
       <Handle type="target" position={Position.Left} />
-      <PanelBox title={`${actionType === 'action' ? 'Action' : actionType === 'bonus' ? 'Bonus Action' : actionType === 'reaction' ? 'Reaction' : 'Free Action'}: ${weapon.name}`}>        
+      <PanelBox title={`${actionType === 'action' ? 'Action' : actionType === 'bonus' ? 'Bonus Action' : actionType === 'reaction' ? 'Reaction' : 'Free Action'}: ${weapon.name}`}>
         <label style={{ display: 'grid', gap: 6, fontSize: 12, color: '#475569' }}>
           <span>Action Type</span>
           <select value={actionType} onChange={(e) => set({ actionType: e.target.value })} style={inp}>
@@ -162,7 +161,7 @@ const AttackNode = ({ id, data }: any) => {
         <label style={{ display: 'grid', gap: 6, fontSize: 12, color: '#475569' }}>
           <span>Attack Preset</span>
           <select value={weapon.id} onChange={(e) => set({ weaponId: e.target.value })} style={inp}>
-            {WEAPON_PRESETS.map((w) => (<option key={w.id} value={w.id}>{w.name}</option>))}
+            {WEAPON_PRESETS.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
           </select>
         </label>
         <div style={{ display: 'flex', gap: 6 }}>
@@ -176,13 +175,13 @@ const AttackNode = ({ id, data }: any) => {
           ))}
         </div>
         {actionType === 'action' ? (
-          <div style={{ fontSize: 11, color: '#64748b' }}>Attacks per action auto-scaled by level.</div>
+          <div style={{ fontSize: 11, color: '#64748b' }}>Primary attack sequence.</div>
         ) : actionType === 'bonus' ? (
-          <div style={{ fontSize: 11, color: '#64748b' }}>Bonus action off-hand attack limited to 1.</div>
+          <div style={{ fontSize: 11, color: '#64748b' }}>Bonus action attack (e.g., off-hand, PAM butt-end).</div>
         ) : actionType === 'reaction' ? (
-          <div style={{ fontSize: 11, color: '#64748b' }}>Reaction attack assumed at most 1/round when triggered.</div>
+          <div style={{ fontSize: 11, color: '#64748b' }}>Reaction attack assumed max 1/round.</div>
         ) : (
-          <div style={{ fontSize: 11, color: '#64748b' }}>Free action attack counted as 1 (homebrew).</div>
+          <div style={{ fontSize: 11, color: '#64748b' }}>Free action attack counted once.</div>
         )}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, fontSize: 12 }}>
           <div><strong>Dice:</strong> {weapon.dice}{weapon.versatile ? ` (${weapon.versatile} vers.)` : ''}</div>
@@ -209,6 +208,12 @@ function FeatNode({ id, data }: any) {
     if (data.ss) active.push('SS')
     if (data.pam) active.push('PAM')
     if (data.cbe) active.push('CBE')
+    if (data.piercer) active.push('Piercer')
+    if (data.dual) active.push('Dual')
+    if (data.crusher) active.push('Crusher')
+    if (data.slasher) active.push('Slasher')
+    if (data.sentinel) active.push('Sentinel')
+    if (data.savageAttacker) active.push('SavAtk')
     return (
       <div style={{ position: 'relative' }}>
         <button className="nodrag nopan" style={delBtn}
@@ -216,12 +221,27 @@ function FeatNode({ id, data }: any) {
           onMouseDown={(e) => { e.stopPropagation(); e.preventDefault() }}
           onClick={handleDelete} title="Delete">×</button>
         <Handle type="target" position={Position.Left} />
-        <PanelBox title="Feats">
+  <PanelBox title="Feats" style={{ minWidth:170 }}>
           <div style={{ fontSize: 11, color: '#64748b' }}>{active.length ? active.join(', ') : 'None'}</div>
         </PanelBox>
         <Handle type="source" position={Position.Right} />
       </div>
     )
+  }
+  const current = data.gwm ? 'gwm' : data.ss ? 'ss' : data.pam ? 'pam' : data.cbe ? 'cbe' : data.piercer ? 'piercer' : data.dual ? 'dual' : data.crusher ? 'crusher' : data.slasher ? 'slasher' : data.sentinel ? 'sentinel' : data.savageAttacker ? 'savageAttacker' : ''
+  const setFeat = (val: string) => {
+    const patch: any = { gwm: false, ss: false, pam: false, cbe: false, piercer: false, dual: false, crusher: false, slasher: false, sentinel: false, savageAttacker: false }
+    if (val === 'gwm') patch.gwm = true
+    else if (val === 'ss') patch.ss = true
+    else if (val === 'pam') patch.pam = true
+    else if (val === 'cbe') patch.cbe = true
+    else if (val === 'piercer') patch.piercer = true
+    else if (val === 'dual') patch.dual = true
+    else if (val === 'crusher') patch.crusher = true
+    else if (val === 'slasher') patch.slasher = true
+    else if (val === 'sentinel') patch.sentinel = true
+    else if (val === 'savageAttacker') patch.savageAttacker = true
+    data.onChange(patch)
   }
   return (
     <div style={{ position: 'relative' }}>
@@ -230,11 +250,24 @@ function FeatNode({ id, data }: any) {
         onMouseDown={(e) => { e.stopPropagation(); e.preventDefault() }}
         onClick={handleDelete} title="Delete">×</button>
       <Handle type="target" position={Position.Left} />
-      <PanelBox title="Feats">
-        <label style={row}><input type="checkbox" checked={!!data.gwm} onChange={(e) => data.onChange({ gwm: e.target.checked })} /> Great Weapon Master</label>
-        <label style={row}><input type="checkbox" checked={!!data.ss} onChange={(e) => data.onChange({ ss: e.target.checked })} /> Sharpshooter</label>
-        <label style={row}><input type="checkbox" checked={!!data.pam} onChange={(e) => data.onChange({ pam: e.target.checked })} /> Polearm Master</label>
-        <label style={row}><input type="checkbox" checked={!!data.cbe} onChange={(e) => data.onChange({ cbe: e.target.checked })} /> Crossbow Expert</label>
+  <PanelBox title="Feats" style={{ minWidth:170 }}>
+        <label style={{ display: 'grid', gap: 6, fontSize: 12, color: '#475569' }}>
+          <span>Select Feat</span>
+          <select value={current} onChange={(e) => setFeat(e.target.value)} style={inp}>
+            <option value="">(none)</option>
+            <option value="gwm">Great Weapon Master</option>
+            <option value="ss">Sharpshooter</option>
+            <option value="pam">Polearm Master</option>
+            <option value="cbe">Crossbow Expert</option>
+            <option value="piercer">Piercer</option>
+            <option value="dual">Dual Wielder</option>
+            <option value="crusher">Crusher</option>
+            <option value="slasher">Slasher</option>
+            <option value="sentinel">Sentinel</option>
+            <option value="savageAttacker">Savage Attacker</option>
+          </select>
+        </label>
+        <div style={{ fontSize: 11, color: '#64748b' }}>Piercer: +1 die on crit (piercing). Sentinel/Slasher/Crusher control effects not DPR-modeled. Savage Attacker not yet modeled.</div>
       </PanelBox>
       <Handle type="source" position={Position.Right} />
     </div>
@@ -456,16 +489,53 @@ function ClassFeaturesNode({ id, data }: any) {
   )
 }
 
-function BuffsNode({ id, data }: any) {
+function SpellsNode({ id, data }: any) {
   const { deleteElements } = useReactFlow()
   const handleDelete = useCallback((e: React.MouseEvent) => {
     e.stopPropagation(); e.preventDefault();
     deleteElements({ nodes: [{ id }] })
   }, [deleteElements, id])
+  const mode: 'support' | 'attack' | 'aoe' = data.mode || 'support'
+  const setMode = (m: typeof mode) => data.onChange({ mode: m })
+  const actionType: 'action' | 'bonus' | 'free' | 'reaction' = data.actionType || 'action'
+  const setActionType = (v: string) => data.onChange({ actionType: v })
+  const actionDisabled = !!data.otherCaster
+  // Support spell selection (single active)
+  const supportCurrent = data.smiteSpell ? data.smiteSpell : (data.bless ? 'bless' : data.d6onhit ? 'hex' : data.divineFavor ? 'divineFavor' : data.haste ? 'haste' : data.magicWeapon ? 'magicWeapon' : '')
+  const setSupport = (val: string) => {
+    const patch: any = { bless: false, d6onhit: false, divineFavor: false, haste: false, magicWeapon: false, smiteSpell: '', mode: 'support' }
+    if (val === 'bless') patch.bless = true
+    else if (val === 'hex') patch.d6onhit = true
+    else if (val === 'divineFavor') patch.divineFavor = true
+    else if (val === 'haste') patch.haste = true
+    else if (val === 'magicWeapon') patch.magicWeapon = true
+    else if (['searing','thunderous','wrathful','branding','blinding','staggering','banishing'].includes(val)) patch.smiteSpell = val
+    data.onChange(patch)
+  }
+  // Attack spell selection
+  const attackSpell = data.attackSpell || 'firebolt'
+  const setAttack = (v: string) => data.onChange({ attackSpell: v })
+  // AoE spell selection + params
+  const aoeSpell = data.aoeSpell || 'fireball3'
+  const setAoe = (v: string) => data.onChange({ aoeSpell: v })
+  const aoeTargets = data.aoeTargets || 3
+  const aoeFail = data.aoeFail ?? 55
+  const setAoeTargets = (n: number) => data.onChange({ aoeTargets: Math.max(1, n) })
+  const setAoeFail = (n: number) => data.onChange({ aoeFail: clamp(n,0,100) })
   if (data.collapsed) {
     const tags: string[] = []
-    if (data.bless) tags.push('Bless')
-    if (data.d6onhit) tags.push('+1d6')
+    if (mode === 'support') {
+      if (data.bless) tags.push('Bless')
+      if (data.d6onhit) tags.push('Hex/HM')
+      if (data.divineFavor) tags.push('Divine Favor')
+      if (data.haste) tags.push('Haste')
+      if (data.magicWeapon) tags.push('Magic Weapon')
+      if (data.smiteSpell) {
+        const nameMap: Record<string,string> = { searing:'Searing Smite', thunderous:'Thunderous Smite', wrathful:'Wrathful Smite', branding:'Branding Smite', blinding:'Blinding Smite', staggering:'Staggering Smite', banishing:'Banishing Smite' }
+        tags.push(nameMap[data.smiteSpell] || data.smiteSpell)
+      }
+    } else if (mode === 'attack') tags.push(attackSpell)
+    else if (mode === 'aoe') tags.push(`${aoeSpell} (${aoeTargets})`)
     return (
       <div style={{ position: 'relative' }}>
         <button className="nodrag nopan" style={delBtn}
@@ -473,7 +543,7 @@ function BuffsNode({ id, data }: any) {
           onMouseDown={(e) => { e.stopPropagation(); e.preventDefault() }}
           onClick={handleDelete} title="Delete">×</button>
         <Handle type="target" position={Position.Left} />
-        <PanelBox title="Buffs">
+        <PanelBox title="Spells">
           <div style={{ fontSize: 11, color: '#64748b' }}>{tags.length ? tags.join(', ') : 'None'}</div>
         </PanelBox>
         <Handle type="source" position={Position.Right} />
@@ -487,9 +557,85 @@ function BuffsNode({ id, data }: any) {
         onMouseDown={(e) => { e.stopPropagation(); e.preventDefault() }}
         onClick={handleDelete} title="Delete">×</button>
       <Handle type="target" position={Position.Left} />
-      <PanelBox title="Buffs & Rider Damage">
-        <label style={row}><input type="checkbox" checked={!!data.bless} onChange={(e) => data.onChange({ bless: e.target.checked })} /> Bless (≈ +2.5 to hit)</label>
-        <label style={row}><input type="checkbox" checked={!!data.d6onhit} onChange={(e) => data.onChange({ d6onhit: e.target.checked })} /> Hex / Hunter's Mark (+1d6 on hit)</label>
+      <PanelBox title="Spells">
+        <label style={{ display:'grid', gap:6, fontSize:12, color: actionDisabled ? '#94a3b8' : '#475569' }}>
+          <span>Action Type</span>
+          <select disabled={actionDisabled} value={actionType} onChange={(e)=> setActionType(e.target.value)} style={{ ...inp, background: actionDisabled ? '#f1f5f9' : inp.background, cursor: actionDisabled ? 'not-allowed':'pointer', opacity: actionDisabled ? 0.6 : 1 }}>
+            <option value="action">Action</option>
+            <option value="bonus">Bonus Action</option>
+            <option value="free">Free Action</option>
+            <option value="reaction">Reaction</option>
+          </select>
+        </label>
+        <div style={{ display:'flex', gap:6 }}>
+          {(['support','attack','aoe'] as const).map(m => (
+            <button key={m} type="button" onClick={()=> setMode(m)} style={{ flex:1, padding:'6px 8px', border:'1px solid #cbd5e1', borderRadius:6, background: mode===m ? '#334155' : '#fff', color: mode===m ? '#fff':'#334155', cursor:'pointer', fontSize:11, fontWeight:600 }}>{m.charAt(0).toUpperCase()+m.slice(1)}</button>
+          ))}
+        </div>
+        {mode === 'support' && (
+          <>
+            <label style={{ display: 'grid', gap: 6, fontSize: 12, color: '#475569' }}>
+              <span>Support Spell</span>
+              <select value={supportCurrent} onChange={(e)=> setSupport(e.target.value)} style={inp}>
+                <option value="">(none)</option>
+                <option value="bless">Bless (+≈2.5 to hit)</option>
+                <option value="hex">Hex / Hunter's Mark (+1d6 on hit)</option>
+                <option value="divineFavor">Divine Favor (+1d4 on hit)</option>
+                <option value="haste">Haste (+1 attack)</option>
+                <option value="magicWeapon">Magic Weapon (+1 hit & dmg)</option>
+                <optgroup label="Smite (once per round)">
+                  <option value="searing">Searing +1d6</option>
+                  <option value="thunderous">Thunderous +2d6</option>
+                  <option value="wrathful">Wrathful +1d6</option>
+                  <option value="branding">Branding +2d6</option>
+                  <option value="blinding">Blinding +3d8</option>
+                  <option value="staggering">Staggering +4d6</option>
+                  <option value="banishing">Banishing +5d10</option>
+                </optgroup>
+              </select>
+            </label>
+            <label style={{ display:'flex', alignItems:'center', gap:6, fontSize:12, color:'#475569' }}>
+              <input type="checkbox" checked={!!data.otherCaster} onChange={(e)=> data.onChange({ otherCaster: e.target.checked })} />
+              <span>Other Caster (buff provided externally)</span>
+            </label>
+            <div style={{ fontSize:11, color:'#64748b' }}>One support spell + concentration tracked abstractly.</div>
+          </>
+        )}
+        {mode === 'attack' && (
+          <>
+            <label style={{ display:'grid', gap:6, fontSize:12, color:'#475569' }}>
+              <span>Attack Spell</span>
+              <select value={attackSpell} onChange={(e)=> setAttack(e.target.value)} style={inp}>
+                <option value="firebolt">Fire Bolt (2d10)</option>
+                <option value="eldritchblast">Eldritch Blast (1d10)</option>
+                <option value="guidingbolt1">Guiding Bolt 1st (4d6)</option>
+                <option value="chromaticorb1">Chromatic Orb 1st (3d8)</option>
+              </select>
+            </label>
+            <div style={{ fontSize:11, color:'#64748b' }}>Assumes one casting / round with a single attack roll.</div>
+          </>
+        )}
+        {mode === 'aoe' && (
+          <>
+            <label style={{ display:'grid', gap:6, fontSize:12, color:'#475569' }}>
+              <span>AoE Spell</span>
+              <select value={aoeSpell} onChange={(e)=> setAoe(e.target.value)} style={inp}>
+                <option value="fireball3">Fireball (8d6)</option>
+                <option value="lightningbolt3">Lightning Bolt (8d6)</option>
+                <option value="spiritguardians3">Spirit Guardians (3d8)</option>
+              </select>
+            </label>
+            <label style={{ display:'grid', gap:6, fontSize:12, color:'#475569' }}>
+              <span>Targets</span>
+              <input type="number" min={1} value={aoeTargets} onChange={(e)=> setAoeTargets(Number(e.target.value)||1)} style={inp} />
+            </label>
+            <label style={{ display:'grid', gap:6, fontSize:12, color:'#475569' }}>
+              <span>Fail %</span>
+              <input type="number" min={0} max={100} value={aoeFail} onChange={(e)=> setAoeFail(Number(e.target.value)||0)} style={inp} />
+            </label>
+            <div style={{ fontSize:11, color:'#64748b' }}>AoE DPR = targets * (fail% * full + success% * half). Spirit Guardians approximate per round.</div>
+          </>
+        )}
       </PanelBox>
       <Handle type="source" position={Position.Right} />
     </div>
@@ -544,7 +690,7 @@ function OutputNode({ id, data }: any) {
             ) : null}
           </div>
         ) : (
-          <div style={{ fontSize: 12, color: '#64748b' }}>Connect Attack / Feats / Features / Buffs nodes to compute DPR.</div>
+          <div style={{ fontSize: 12, color: '#64748b' }}>Connect Attack / Feats / Features / Spells nodes to compute DPR.</div>
         )}
       </PanelBox>
       <Handle type="source" position={Position.Right} />
@@ -552,7 +698,59 @@ function OutputNode({ id, data }: any) {
   )
 }
 
-const nodeTypes = { attack: AttackNode, weapon: AttackNode, feats: FeatNode, features: ClassFeaturesNode, buffs: BuffsNode, output: OutputNode }
+const nodeTypes = { attack: AttackNode, weapon: AttackNode, feats: FeatNode, features: ClassFeaturesNode, spells: SpellsNode, output: OutputNode }
+
+// Insert TraitsNode and updated nodeTypes below
+// Racial / lineage traits affecting DPR
+function TraitsNode({ id, data }: any) {
+  const { deleteElements } = useReactFlow()
+  const handleDelete = React.useCallback((e: React.MouseEvent) => { e.stopPropagation(); e.preventDefault(); deleteElements({ nodes: [{ id }] }) }, [deleteElements, id])
+  const current = data.traitId || (data.savageAttacks ? 'savageAttacks' : '')
+  const setTrait = (val: string) => {
+    if (val === 'savageAttacks') data.onChange({ traitId: val, savageAttacks: true })
+    else data.onChange({ traitId: '', savageAttacks: false })
+  }
+  if (data.collapsed) {
+    const tags: string[] = []
+    if (current === 'savageAttacks') tags.push('Savage Attacks')
+    return (
+      <div style={{ position: 'relative' }}>
+        <button className="nodrag nopan" style={delBtn}
+          onPointerDown={(e) => { e.stopPropagation(); e.preventDefault() }}
+          onMouseDown={(e) => { e.stopPropagation(); e.preventDefault() }}
+          onClick={handleDelete} title="Delete">×</button>
+        <Handle type="target" position={Position.Left} />
+        <PanelBox title="Traits">
+          <div style={{ fontSize: 11, color: '#64748b' }}>{tags.length ? tags.join(', ') : 'None'}</div>
+        </PanelBox>
+        <Handle type="source" position={Position.Right} />
+      </div>
+    )
+  }
+  return (
+    <div style={{ position: 'relative' }}>
+      <button className="nodrag nopan" style={delBtn}
+        onPointerDown={(e) => { e.stopPropagation(); e.preventDefault() }}
+        onMouseDown={(e) => { e.stopPropagation(); e.preventDefault() }}
+        onClick={handleDelete} title="Delete">×</button>
+      <Handle type="target" position={Position.Left} />
+      <PanelBox title="Racial Traits">
+        <label style={{ display:'grid', gap:6, fontSize:12, color:'#475569' }}>
+          <span>Select Trait</span>
+          <select value={current} onChange={(e)=> setTrait(e.target.value)} style={inp}>
+            <option value="">(none)</option>
+            <option value="savageAttacks">Savage Attacks (extra weapon die on crit)</option>
+          </select>
+        </label>
+      </PanelBox>
+      <Handle type="source" position={Position.Right} />
+    </div>
+  )
+}
+
+// Extend nodeTypes with traits
+// @ts-ignore
+const nodeTypesWithTraits = { ...nodeTypes, traits: TraitsNode }
 
 export function NodeOptimizer(props: { character?: BuilderState; derived?: any }) {
   // Global knobs
@@ -703,7 +901,8 @@ export function NodeOptimizer(props: { character?: BuilderState; derived?: any }
       const weaponNodes = incoming.map((e) => map.get(e.source)).filter((x) => x && (x.type === 'attack' || x.type === 'weapon')) as any[]
       const featNode = incoming.map((e) => map.get(e.source)).find((x) => x?.type === 'feats') as any
       const featureNodes = incoming.map((e) => map.get(e.source)).filter((x) => x?.type === 'features') as any[]
-      const buffsNode = incoming.map((e) => map.get(e.source)).find((x) => x?.type === 'buffs') as any
+  const spellsNode = incoming.map((e) => map.get(e.source)).find((x) => x?.type === 'spells') as any
+  const traitNodes = incoming.map((e) => map.get(e.source)).filter((x) => x?.type === 'traits') as any[]
       if (!weaponNodes.length) return { ...n, data: { ...n.data, summary: null } }
       // Aggregate feature nodes (supports new per-feature nodes & legacy-all)
   const agg: any = { level: effLevel, styleId: undefined, sneak: false, rage: false, smite: false, smiteSlotLevel: 0, smiteUndeadFiend: false, hexblade: false, critRange: 20, maneuversPerRound: 0, maneuverDie: 'd8', brutalCritDice: 0 }
@@ -734,14 +933,19 @@ export function NodeOptimizer(props: { character?: BuilderState; derived?: any }
       })
       const styleId = agg.styleId
       const critRange = agg.critRange
-      const feats = featNode?.data || {}
+    const feats = featNode?.data || {}
       // Derive smite dice from slot level (1->2d8,2->3d8,3->4d8,4->5d8,5->5d8 per PHB cap)
       if (agg.smiteSlotLevel) {
         const slot = clamp(agg.smiteSlotLevel,1,5)
         agg.smiteDice = Math.min(5, slot + 1)
       }
       const features = agg
-      const buffs = buffsNode?.data || {}
+  // Gather spells nodes
+  const allSpellNodes = incoming.map((e) => map.get(e.source)).filter((x) => x?.type === 'spells') as any[]
+  const supportNode = allSpellNodes.find(sn => (sn.data?.mode || 'support') === 'support')
+  const buffs = supportNode?.data || {}
+  const traitsAgg = { savageAttacks: false }
+  traitNodes.forEach(tn => { if (tn.data?.savageAttacks) traitsAgg.savageAttacks = true })
       const notes: string[] = []
       const strMod = props.derived?.strMod ?? abilityMod(str)
       const dexMod = props.derived?.dexMod ?? abilityMod(dex)
@@ -757,23 +961,35 @@ export function NodeOptimizer(props: { character?: BuilderState; derived?: any }
       let sneakDice = features.sneak ? Math.min(10, Math.ceil(effLevel / 2)) : 0
       let sneakAdded = false
 
-      weaponNodes.forEach((wn, idx) => {
+  const offensiveSpellNodes = allSpellNodes.filter(sn => (sn.data?.mode === 'attack' || sn.data?.mode === 'aoe'))
+  weaponNodes.forEach((wn, idx) => {
         const weapon = WEAPON_PRESETS.find((w) => w.id === wn.data.weaponId) ?? WEAPON_PRESETS[0]
         const actionType: 'action' | 'bonus' | 'free' | 'reaction' = wn.data.actionType || (idx === 0 ? 'action' : 'bonus')
-        const attacksForSeq = actionType === 'action'
+        let attacksForSeq = actionType === 'action'
           ? (wn.data.attacks || fighterAttacksPerRound(effLevel))
           : 1
+        // Haste: +1 weapon attack as part of action (not stacking with bonus/offhand etc.) applied to first action sequence only.
+        if (idx === 0 && actionType === 'action' && buffs.haste) {
+          attacksForSeq += 1
+          notes.push('Haste: +1 attack applied.')
+        }
         const grip: 'main' | 'off' | 'both' = wn.data.grip || 'main'
         const isRanged = weapon.ranged === true
         const usesDex = isRanged || weapon.finesse
   let toHit = prof + (usesDex ? dexMod : strMod)
   if (styleId === 'archery' && isRanged) { toHit += 2; if (idx === 0) notes.push('Archery: +2 to hit applied.') }
+        if (buffs.magicWeapon) { toHit += 1; if (idx === 0) notes.push('Magic Weapon: +1 to hit.') }
   if (styleId === 'defense' && idx === 0) { notes.push('Defense: +1 AC (not in DPR).') }
         if (buffs.bless) { toHit += 2.5; if (idx === 0) notes.push('Bless: +≈2.5 to hit EV.') }
         const qualifiesGWM = weapon.tags?.includes('gwm')
         const qualifiesSS = weapon.tags?.includes('ss')
-        if (feats.gwm && qualifiesGWM && !isRanged) { toHit -= 5; if (idx === 0) notes.push('GWM: -5 to hit/+10 dmg.') }
-        if (feats.ss && qualifiesSS && isRanged) { toHit -= 5; if (idx === 0) notes.push('Sharpshooter: -5 to hit/+10 dmg.') }
+  if (feats.gwm && qualifiesGWM && !isRanged) { toHit -= 5; if (idx === 0) notes.push('GWM: -5 to hit/+10 dmg.') }
+  if (feats.ss && qualifiesSS && isRanged) { toHit -= 5; if (idx === 0) notes.push('Sharpshooter: -5 to hit/+10 dmg.') }
+  if (feats.dual && idx === 0) { notes.push('Dual Wielder: DPR impact not modeled (enables non-light offhand).') }
+  if (feats.crusher && idx === 0) { notes.push('Crusher: Advantage grant on crit not modeled.') }
+  if (feats.slasher && idx === 0) { notes.push('Slasher: Speed/disadvantage effects not modeled.') }
+  if (feats.sentinel && idx === 0) { notes.push('Sentinel: Extra reaction attack chance not modeled.') }
+  if (feats.savageAttacker && idx === 0) { notes.push('Savage Attacker: Reroll once/turn not modeled.') }
   const basePHit = clamp((21 + toHit - ac) / 20, 0, 1)
   const basePCritRaw = (21 - critRange) / 20 // e.g. critRange 20 => 1/20
   const basePCrit = basePCritRaw
@@ -797,19 +1013,21 @@ export function NodeOptimizer(props: { character?: BuilderState; derived?: any }
   let flatDamageBonus = 0
   // Dueling: +2 damage when wielding a melee weapon in one hand (we don't enforce shield/no other weapon logic here)
   if (styleId === 'dueling' && !isRanged && weapon.handed === '1h' && grip !== 'both') { flatDamageBonus += 2; if (idx === 0) notes.push('Dueling: +2 damage (1H melee).') }
-        if (feats.gwm && qualifiesGWM && !isRanged) { flatDamageBonus += 10 }
-        if (feats.ss && qualifiesSS && isRanged) { flatDamageBonus += 10 }
+  if (feats.gwm && qualifiesGWM && !isRanged) { flatDamageBonus += 10 }
+  if (feats.ss && qualifiesSS && isRanged) { flatDamageBonus += 10 }
   if (styleId === 'two-weapon' && isOffhand && includeAbilityMod && idx === 0) { notes.push('Two-Weapon Fighting: ability mod added to off-hand.') }
   if (features.hexblade) { flatDamageBonus += prof; if (idx === 0) notes.push(`Hexblade's Curse: +${prof} dmg per hit.`) }
-        const riderOnHitAvg = buffs.d6onhit ? DICE_AVG.d6 : 0
-        if (buffs.d6onhit && idx === 0) notes.push("Hex/Hunter's Mark: +1d6 on hit.")
+  let riderOnHitAvg = 0
+  if (buffs.d6onhit) { riderOnHitAvg += DICE_AVG.d6; if (idx === 0) notes.push("Hex/Hunter's Mark: +1d6 on hit.") }
+  if (buffs.divineFavor) { riderOnHitAvg += DICE_AVG.d4; if (idx === 0) notes.push('Divine Favor: +1d4 radiant on hit.') }
         const rageBonus = features.rage ? (effLevel >= 16 ? 4 : effLevel >= 9 ? 3 : 2) : 0
         if (rageBonus && !isRanged) { flatDamageBonus += rageBonus; if (idx === 0) notes.push(`Rage: +${rageBonus} melee damage per hit.`) }
         const critDiceAvg = diceAverage(dice, { greatWeaponFighting: gwf })
-        const perAttackBase = baseDieAvg + (includeAbilityMod ? abilityModVal : 0) + flatDamageBonus + riderOnHitAvg
+  if (buffs.magicWeapon) { flatDamageBonus += 1; if (idx === 0) notes.push('Magic Weapon: +1 damage.') }
+  const perAttackBase = baseDieAvg + (includeAbilityMod ? abilityModVal : 0) + flatDamageBonus + riderOnHitAvg
         const dmgPerAttack = (pHit - pCrit) * perAttackBase + pCrit * (perAttackBase + critDiceAvg)
         let seqDPR = dmgPerAttack * attacksForSeq
-        // Brutal Critical extra dice (melee only)
+  // Brutal Critical extra dice (melee only)
         if (features.brutalCritDice && !isRanged) {
           // Determine single weapon die size (e.g. 2d6 -> d6)
           const dieMatch = weapon.dice.match(/d(\d+)/)
@@ -817,6 +1035,16 @@ export function NodeOptimizer(props: { character?: BuilderState; derived?: any }
           const extraAvg = diceAverage(`${features.brutalCritDice}${dieFace}`, { greatWeaponFighting: gwf })
           seqDPR += pCrit * extraAvg * attacksForSeq
           if (idx === 0) notes.push(`Brutal Critical: +${features.brutalCritDice}${dieFace} on crit.`)
+        }
+        // Savage Attacks (Half-Orc): +1 weapon die on crit (melee only)
+        if (traitsAgg.savageAttacks && !isRanged) {
+          seqDPR += pCrit * baseDieAvg * attacksForSeq
+          if (idx === 0) notes.push('Savage Attacks: +1 weapon die on crit.')
+        }
+        // Piercer extra die on crit (piercing only). Applies per crit.
+        if (feats.piercer && weapon.type === 'piercing') {
+          seqDPR += pCrit * baseDieAvg * attacksForSeq
+          if (idx === 0) notes.push('Piercer: +1 weapon die on crit (reroll benefit ignored).')
         }
         // Smite only on action sequences (simplified)
         if (features.smite && actionType === 'action') {
@@ -827,6 +1055,31 @@ export function NodeOptimizer(props: { character?: BuilderState; derived?: any }
           const smiteAvg = (pNonCritHit * (smiteDice * d8avg)) + (pCrit * (smiteDice * 2 * d8avg))
           seqDPR += smiteAvg
           if (idx === 0) notes.push(`Smite: ${smiteDice}d8 (slot L${features.smiteSlotLevel || 1}${features.smiteUndeadFiend ? '+vs undead/fiend' : ''}).`)
+        }
+        // Smite spell (applies its bonus damage dice once per round on first action sequence)
+        if (idx === 0 && actionType === 'action' && buffs.smiteSpell) {
+          const sm = buffs.smiteSpell as string
+          const diceMap: Record<string, string> = {
+            searing: '1d6',
+            thunderous: '2d6',
+            wrathful: '1d6',
+            branding: '2d6',
+            blinding: '3d8',
+            staggering: '4d6',
+            banishing: '5d10',
+          }
+          const diceExpr = diceMap[sm]
+          if (diceExpr) {
+            const parts = parseDice(diceExpr)
+            let normalAvg = 0
+            parts.forEach(p => { normalAvg += p.n * (DICE_AVG[p.die] || 0) })
+            const critAvg = normalAvg * 2
+            const pNonCrit = Math.max(pHit - pCrit, 0)
+            const add = pNonCrit * normalAvg + pCrit * critAvg
+            seqDPR += add
+            const label: Record<string,string> = { searing:'Searing', thunderous:'Thunderous', wrathful:'Wrathful', branding:'Branding', blinding:'Blinding', staggering:'Staggering', banishing:'Banishing' }
+            notes.push(`${label[sm] || sm} Smite: +${diceExpr} once.`)
+          }
         }
         // Battlemaster maneuvers (apply once per round on action sequence only, using average hit chances of this sequence)
         if (features.maneuversPerRound && features.maneuversPerRound > 0 && actionType === 'action' && idx === 0) {
@@ -845,6 +1098,36 @@ export function NodeOptimizer(props: { character?: BuilderState; derived?: any }
           const pAnyHitSeq = 1 - Math.pow(1 - pNonCritHit, attacksForSeq)
           qualifyingSneakPHits.push(pAnyHitSeq)
         }
+      })
+
+      // Offensive spell nodes (attack & aoe)
+      offensiveSpellNodes.forEach(os => {
+        const d = os.data || {}
+        if (d.mode === 'attack') {
+          const id = d.attackSpell || 'firebolt'
+          const diceExpr = ({ firebolt:'2d10', eldritchblast:'1d10', guidingbolt1:'4d6', chromaticorb1:'3d8' } as Record<string,string>)[id] || '1d6'
+          const parts = parseDice(diceExpr)
+          let diceAvg = 0; parts.forEach(p => { diceAvg += p.n * (DICE_AVG[p.die] || 0) })
+          const toHitEst = maxToHit === -Infinity ? (prof + abilityMod(str)) : maxToHit
+          const pHitBase = clamp((21 + toHitEst - ac) / 20, 0, 1)
+          const pHit = advTransform(pHitBase, advMode)
+          const pCrit = advTransform(1/20, advMode)
+          const pNonCrit = Math.max(pHit - pCrit, 0)
+          const dmg = pNonCrit * diceAvg + pCrit * (diceAvg * 2)
+          totalDPR += dmg
+          notes.push(`${id}: +${dmg.toFixed(2)} DPR`)
+        } else if (d.mode === 'aoe') {
+          const id = d.aoeSpell || 'fireball3'
+          const diceExpr = ({ fireball3:'8d6', lightningbolt3:'8d6', spiritguardians3:'3d8' } as Record<string,string>)[id] || '1d6'
+          const parts = parseDice(diceExpr)
+          let diceAvg = 0; parts.forEach(p => { diceAvg += p.n * (DICE_AVG[p.die] || 0) })
+          const targets = d.aoeTargets || 1
+          const failPercent = clamp(d.aoeFail ?? 55, 0, 100) / 100
+          const successPercent = 1 - failPercent
+          const perTarget = failPercent * diceAvg + successPercent * (diceAvg * 0.5)
+          const dmg = perTarget * targets
+          totalDPR += dmg
+          notes.push(`${id}: +${dmg.toFixed(2)} DPR (${targets} targets)`) }
       })
 
       // Sneak attack applied once if any qualifying sequence hits
@@ -967,14 +1250,16 @@ export function NodeOptimizer(props: { character?: BuilderState; derived?: any }
   // Clear persistence on full reset
   const clearPersistence = useCallback(() => { try { localStorage.removeItem(STORAGE_KEY) } catch {} }, [])
 
-  const addNode = (type: keyof typeof nodeTypes) => {
+  const addNode = (type: keyof typeof nodeTypes | 'traits') => {
     const id = `${type}-${crypto.randomUUID().slice(0, 6)}`
     const y = 40 + Math.random() * 760
     const base: any = { id, type, position: { x: 80, y }, data: { onChange: (p: any) => updateNodeData(id, p), onDelete: removeNode } }
   if (type === 'attack') { base.data.weaponId = WEAPON_PRESETS[0].id; base.data.actionType = nodes.some(n => n.type === 'attack') ? 'bonus' : 'action'; base.data.grip = 'main' }
-  if (type === 'feats') Object.assign(base.data, { gwm: false, ss: false, pam: false, cbe: false })
+  if (type === 'feats') Object.assign(base.data, { gwm: false, ss: false, pam: false, cbe: false, piercer: false, dual: false, crusher: false, slasher: false, sentinel: false, savageAttacker: false })
   if (type === 'features') Object.assign(base.data, { level, featureType: '', styleId: '', critRange: 20, maneuversPerRound: 0, maneuverDie: 'd8', brutalCritDice: 0, hexblade: false, sneak: false, rage: false, smite: false })
-    if (type === 'buffs') Object.assign(base.data, { bless: false, d6onhit: false })
+  if (type === 'traits') Object.assign(base.data, { savageAttacks: false })
+  if (type === 'spells') Object.assign(base.data, { mode: 'support', bless: false, d6onhit: false, divineFavor: false, haste: false, magicWeapon: false, smiteSpell: '', attackSpell: 'firebolt', aoeSpell: 'fireball3', aoeTargets: 3, aoeFail: 55 })
+  if (type === 'spells') Object.assign(base.data, { actionType: 'action', otherCaster: false })
     if (type === 'output') base.data.summary = null
     snapshot()
     setNodes((nds) => [...nds as any, base] as any)
@@ -1047,7 +1332,7 @@ export function NodeOptimizer(props: { character?: BuilderState; derived?: any }
   const featuresSneak = make('features', 40, 640, { level: effLevel, featureType: 'sneak-attack' })
   const featuresRage = make('features', 40, 760, { level: effLevel, featureType: 'rage' })
   const outputId = make('output', 420, 420, { summary: null })
-  const buffsId = make('buffs', 40, 880, { bless:false, d6onhit:false })
+  const buffsId = make('spells', 40, 880, { bless:false, d6onhit:false })
   ;[attackId, featsId, featuresStyle, featuresSneak, featuresRage, buffsId].forEach(src => { newEdges.push({ id: `e-${crypto.randomUUID().slice(0,6)}`, source: src, target: outputId }) })
     setNodes(newNodes as any)
     setEdges(newEdges as any)
@@ -1106,7 +1391,7 @@ export function NodeOptimizer(props: { character?: BuilderState; derived?: any }
           <button onClick={exportGraph} style={btn} title="Export JSON">Export</button>
           <button onClick={importGraph} style={btn} title="Import JSON">Import</button>
         </div>
-        <ReactFlow nodes={nodes as any} edges={edges} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={onConnect} nodeTypes={nodeTypes as any} fitView>
+        <ReactFlow nodes={nodes as any} edges={edges} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={onConnect} nodeTypes={nodeTypesWithTraits as any} fitView>
           <Background />
           <MiniMap pannable zoomable />
           <Controls showInteractive={false} />
@@ -1252,10 +1537,11 @@ export function NodeOptimizer(props: { character?: BuilderState; derived?: any }
             <button onClick={() => addNode('attack')} style={btn}>+ Attack</button>
             <button onClick={() => addNode('feats')} style={btn}>+ Feats</button>
             <button onClick={() => addNode('features')} style={btn}>+ Features</button>
-            <button onClick={() => addNode('buffs')} style={btn}>+ Buffs</button>
+            <button onClick={() => addNode('spells')} style={btn}>+ Spells</button>
+            <button onClick={() => addNode('traits' as any)} style={btn}>+ Traits</button>
             <button onClick={() => addNode('output')} style={btn}>+ Output</button>
           </div>
-          <div style={{ padding: '0 12px 12px', fontSize: 12, color: '#64748b' }}>Typical wiring: Attack / Feats / Features / Buffs → Output. Fighting Style is configured inside Features.</div>
+          <div style={{ padding: '0 12px 12px', fontSize: 12, color: '#64748b' }}>Typical wiring: Attack / Feats / Features / Traits / Spells → Output. Fighting Style is configured inside Features. Traits adds racial effects (e.g., Savage Attacks).</div>
         </section>
 
       </div>
