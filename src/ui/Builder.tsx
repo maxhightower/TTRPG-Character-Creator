@@ -190,12 +190,21 @@ function renderProgressionTable(classes: Array<{ klass: Klass; level: number; su
   )
 }
 // ---------------- Class Feature Decision Specs ----------------
-interface ClassFeatureDecisionSpecOption { id: string; name: string; text: string }
+interface ClassFeatureDecisionSpecOption { id: string; name: string; text: string; equipment?: string[] }
 interface ClassFeatureDecisionSpec { id: string; name: string; level: number; picks: number; options: ClassFeatureDecisionSpecOption[] }
 
 const CLASS_FEATURE_DECISIONS: Record<string, ClassFeatureDecisionSpec[]> = {
   barbarian: [
-    // Minimal subset (original first totem choice truncated during refactor)
+    {
+      id: 'starting-equipment',
+      name: 'Starting Equipment',
+      level: 1,
+      picks: 1,
+      options: [
+        { id: 'greataxe-kit', name: 'Greataxe Kit', text: 'Greataxe, 2 Handaxes, Shield', equipment: ['greataxe','handaxe','handaxe','shield'] },
+        { id: 'greatsword-kit', name: 'Greatsword Kit', text: 'Greatsword, Mace, Shield', equipment: ['greatsword','mace','shield'] },
+      ],
+    },
     {
       id: 'path-feature-6',
       name: 'Path Feature (6th)',
@@ -238,6 +247,17 @@ const CLASS_FEATURE_DECISIONS: Record<string, ClassFeatureDecisionSpec[]> = {
   ],
   fighter: [
     {
+      id: 'starting-equipment',
+      name: 'Starting Equipment',
+      level: 1,
+      picks: 1,
+      options: [
+        { id: 'sword-shield', name: 'Longsword & Shield', text: 'Longsword, Shield', equipment: ['longsword','shield'] },
+        { id: 'greatsword', name: 'Greatsword', text: 'Greatsword (two‑handed)', equipment: ['greatsword'] },
+        { id: 'bow-kit', name: 'Longbow Kit', text: 'Longbow, Shortsword', equipment: ['longbow','shortsword'] },
+      ],
+    },
+    {
       id: 'fighting-style',
       name: 'Fighting Style',
       level: 1,
@@ -253,6 +273,17 @@ const CLASS_FEATURE_DECISIONS: Record<string, ClassFeatureDecisionSpec[]> = {
     },
   ],
   paladin: [
+    {
+      id: 'starting-equipment',
+      name: 'Starting Equipment',
+      level: 1,
+      picks: 1,
+      options: [
+        { id: 'longsword-shield', name: 'Longsword & Shield', text: 'Longsword, Shield', equipment: ['longsword','shield'] },
+        { id: 'warhammer-shield', name: 'Warhammer & Shield', text: 'Warhammer, Shield', equipment: ['warhammer','shield'] },
+        { id: 'greatsword', name: 'Greatsword', text: 'Greatsword (two‑handed)', equipment: ['greatsword'] },
+      ],
+    },
     {
       id: 'fighting-style',
       name: 'Fighting Style',
@@ -273,14 +304,25 @@ const CLASS_FEATURE_DECISIONS: Record<string, ClassFeatureDecisionSpec[]> = {
       options: [
         { id: 'oath-devotion', name: 'Oath of Devotion', text: 'Channel Divinity options: Sacred Weapon, Turn the Unholy.' },
         { id: 'oath-vengeance', name: 'Oath of Vengeance', text: 'Channel Divinity options: Abjure Enemy, Vow of Enmity.' },
-  { id: 'oath-ancients', name: 'Oath of the Ancients', text: 'Channel Divinity: Nature’s Wrath, Turn the Faithless.' },
-  { id: 'oath-conquest', name: 'Oath of Conquest', text: 'Channel Divinity: Conquering Presence, Guided Strike (flavored for conquest).' },
-  { id: 'oath-redemption', name: 'Oath of Redemption', text: 'Channel Divinity: Emissary of Peace, Rebuke the Violent.' },
-  { id: 'oath-glory', name: 'Oath of Glory', text: 'Channel Divinity: Peerless Athlete, Inspiring Smite.' },
+        { id: 'oath-ancients', name: 'Oath of the Ancients', text: 'Channel Divinity: Nature’s Wrath, Turn the Faithless.' },
+        { id: 'oath-conquest', name: 'Oath of Conquest', text: 'Channel Divinity: Conquering Presence, Guided Strike (flavored for conquest).' },
+        { id: 'oath-redemption', name: 'Oath of Redemption', text: 'Channel Divinity: Emissary of Peace, Rebuke the Violent.' },
+        { id: 'oath-glory', name: 'Oath of Glory', text: 'Channel Divinity: Peerless Athlete, Inspiring Smite.' },
       ],
     },
   ],
   cleric: [
+    {
+      id: 'starting-equipment',
+      name: 'Starting Equipment',
+      level: 1,
+      picks: 1,
+      options: [
+        { id: 'mace-shield', name: 'Mace & Shield', text: 'Mace, Shield', equipment: ['mace','shield'] },
+        { id: 'warhammer', name: 'Warhammer', text: 'Warhammer', equipment: ['warhammer'] },
+        { id: 'dagger-kit', name: 'Dagger Pack', text: 'Two Daggers', equipment: ['dagger','dagger'] },
+      ],
+    },
     {
       id: 'divine-domain',
       name: 'Divine Domain',
@@ -289,14 +331,25 @@ const CLASS_FEATURE_DECISIONS: Record<string, ClassFeatureDecisionSpec[]> = {
       options: [
         { id: 'life-domain', name: 'Life Domain', text: 'Healer‑focused domain; Channel Divinity: Preserve Life.' },
         { id: 'light-domain', name: 'Light Domain', text: 'Radiant/Fire domain; Channel Divinity: Radiance of the Dawn.' },
-  { id: 'tempest-domain', name: 'Tempest Domain', text: 'Storm power; Channel Divinity: Destructive Wrath.' },
-  { id: 'twilight-domain', name: 'Twilight Domain', text: 'Soothing dusk magic; Channel Divinity: Twilight Sanctuary.' },
-  { id: 'peace-domain', name: 'Peace Domain', text: 'Harmony & bonds; Channel Divinity: Balm of Peace.' },
-  { id: 'forge-domain', name: 'Forge Domain', text: 'Creation & craft; Channel Divinity: Artisan’s Blessing.' },
+        { id: 'tempest-domain', name: 'Tempest Domain', text: 'Storm power; Channel Divinity: Destructive Wrath.' },
+        { id: 'twilight-domain', name: 'Twilight Domain', text: 'Soothing dusk magic; Channel Divinity: Twilight Sanctuary.' },
+        { id: 'peace-domain', name: 'Peace Domain', text: 'Harmony & bonds; Channel Divinity: Balm of Peace.' },
+        { id: 'forge-domain', name: 'Forge Domain', text: 'Creation & craft; Channel Divinity: Artisan’s Blessing.' },
       ],
     },
   ],
   druid: [
+    {
+      id: 'starting-equipment',
+      name: 'Starting Equipment',
+      level: 1,
+      picks: 1,
+      options: [
+        { id: 'spear-shield', name: 'Spear & Shield', text: 'Spear, Shield', equipment: ['spear','shield'] },
+        { id: 'mace-shield', name: 'Mace & Shield', text: 'Mace, Shield', equipment: ['mace','shield'] },
+        { id: 'dagger-pack', name: 'Two Daggers', text: 'Two Daggers', equipment: ['dagger','dagger'] },
+      ],
+    },
     {
       id: 'druid-circle',
       name: 'Druid Circle',
@@ -305,14 +358,25 @@ const CLASS_FEATURE_DECISIONS: Record<string, ClassFeatureDecisionSpec[]> = {
       options: [
         { id: 'circle-land', name: 'Circle of the Land', text: 'Bonus spells and recovery tied to the land.' },
         { id: 'circle-moon', name: 'Circle of the Moon', text: 'Combat‑focused Wild Shape improvements.' },
-  { id: 'circle-dreams', name: 'Circle of Dreams', text: 'Fey‑touched healing & teleportation (Balm of the Summer Court).' },
-  { id: 'circle-shepherd', name: 'Circle of the Shepherd', text: 'Summoning & spirit totems to aid allies.' },
-  { id: 'circle-spores', name: 'Circle of Spores', text: 'Fungal decay magic; necrotic Halo of Spores.' },
-  { id: 'circle-wildfire', name: 'Circle of Wildfire', text: 'Flame‑and‑regrowth magic with Wildfire Spirit companion.' },
+        { id: 'circle-dreams', name: 'Circle of Dreams', text: 'Fey‑touched healing & teleportation (Balm of the Summer Court).' },
+        { id: 'circle-shepherd', name: 'Circle of the Shepherd', text: 'Summoning & spirit totems to aid allies.' },
+        { id: 'circle-spores', name: 'Circle of Spores', text: 'Fungal decay magic; necrotic Halo of Spores.' },
+        { id: 'circle-wildfire', name: 'Circle of Wildfire', text: 'Flame‑and‑regrowth magic with Wildfire Spirit companion.' },
       ],
     },
   ],
   bard: [
+    {
+      id: 'starting-equipment',
+      name: 'Starting Equipment',
+      level: 1,
+      picks: 1,
+      options: [
+        { id: 'rapier-crossbow', name: 'Rapier & Light Crossbow', text: 'Rapier, Light Crossbow', equipment: ['rapier','light-crossbow'] },
+        { id: 'longsword-dagger', name: 'Longsword & Dagger', text: 'Longsword, Dagger', equipment: ['longsword','dagger'] },
+        { id: 'shortbow-dagger', name: 'Shortbow & Dagger', text: 'Shortbow, Dagger', equipment: ['shortbow','dagger'] },
+      ],
+    },
     {
       id: 'bard-college',
       name: 'Bard College',
@@ -329,9 +393,6 @@ const CLASS_FEATURE_DECISIONS: Record<string, ClassFeatureDecisionSpec[]> = {
       level: 3,
       picks: 2,
       options: [
-        // Use the global SKILLS list for options
-        // Filled just below using a placeholder; this will be replaced at runtime in UI rendering
-        // We'll still provide static entries to satisfy types; UI will read from here.
         { id: 'acrobatics', name: 'Acrobatics', text: 'Double proficiency in Acrobatics.' },
         { id: 'animal', name: 'Animal Handling', text: 'Double proficiency in Animal Handling.' },
         { id: 'arcana', name: 'Arcana', text: 'Double proficiency in Arcana.' },
@@ -355,6 +416,17 @@ const CLASS_FEATURE_DECISIONS: Record<string, ClassFeatureDecisionSpec[]> = {
   ],
   monk: [
     {
+      id: 'starting-equipment',
+      name: 'Starting Equipment',
+      level: 1,
+      picks: 1,
+      options: [
+        { id: 'shortsword-dagger', name: 'Shortsword & Dagger', text: 'Shortsword, Dagger', equipment: ['shortsword','dagger'] },
+        { id: 'spear-dagger', name: 'Spear & Dagger', text: 'Spear, Dagger', equipment: ['spear','dagger'] },
+        { id: 'shortbow', name: 'Shortbow', text: 'Shortbow', equipment: ['shortbow'] },
+      ],
+    },
+    {
       id: 'monastic-tradition',
       name: 'Monastic Tradition',
       level: 3,
@@ -362,13 +434,24 @@ const CLASS_FEATURE_DECISIONS: Record<string, ClassFeatureDecisionSpec[]> = {
       options: [
         { id: 'open-hand', name: 'Way of the Open Hand', text: 'Enhance Flurry of Blows with additional effects.' },
         { id: 'shadow', name: 'Way of Shadow', text: 'Ki‑powered stealth and shadow arts.' },
-  { id: 'four-elements', name: 'Way of the Four Elements', text: 'Spend ki to cast elemental disciplines (fire, water, earth, air).' },
-  { id: 'kensei', name: 'Way of the Kensei', text: 'Weapon‑master monk; agile martial weapon techniques.' },
-  { id: 'mercy', name: 'Way of Mercy', text: 'Mask of compassion; healing and necrotic ki strikes.' },
+        { id: 'four-elements', name: 'Way of the Four Elements', text: 'Spend ki to cast elemental disciplines (fire, water, earth, air).' },
+        { id: 'kensei', name: 'Way of the Kensei', text: 'Weapon‑master monk; agile martial weapon techniques.' },
+        { id: 'mercy', name: 'Way of Mercy', text: 'Mask of compassion; healing and necrotic ki strikes.' },
       ],
     },
   ],
   warlock: [
+    {
+      id: 'starting-equipment',
+      name: 'Starting Equipment',
+      level: 1,
+      picks: 1,
+      options: [
+        { id: 'mace-crossbow', name: 'Mace & Light Crossbow', text: 'Mace, Light Crossbow', equipment: ['mace','light-crossbow'] },
+        { id: 'dagger-pack', name: 'Two Daggers', text: 'Two Daggers', equipment: ['dagger','dagger'] },
+        { id: 'spear', name: 'Spear', text: 'Spear', equipment: ['spear'] },
+      ],
+    },
     {
       id: 'otherworldly-patron',
       name: 'Otherworldly Patron',
@@ -378,9 +461,9 @@ const CLASS_FEATURE_DECISIONS: Record<string, ClassFeatureDecisionSpec[]> = {
         { id: 'fiend', name: 'The Fiend', text: 'Dark bargains grant destructive power.' },
         { id: 'archfey', name: 'The Archfey', text: 'Fey patrons grant beguiling and trickster magic.' },
         { id: 'great-old-one', name: 'The Great Old One', text: 'Alien entities gift telepathy and mind‑bending magic.' },
-  { id: 'celestial', name: 'The Celestial', text: 'Heavenly patron grants healing and radiant power.' },
-  { id: 'hexblade', name: 'The Hexblade', text: 'Shadowy weapon pact; martial & curse features.' },
-  { id: 'genie', name: 'The Genie', text: 'Elemental vessel bestows wish‑tinged versatility.' },
+        { id: 'celestial', name: 'The Celestial', text: 'Heavenly patron grants healing and radiant power.' },
+        { id: 'hexblade', name: 'The Hexblade', text: 'Shadowy weapon pact; martial & curse features.' },
+        { id: 'genie', name: 'The Genie', text: 'Elemental vessel bestows wish‑tinged versatility.' },
       ],
     },
     {
@@ -398,6 +481,16 @@ const CLASS_FEATURE_DECISIONS: Record<string, ClassFeatureDecisionSpec[]> = {
   ],
   sorcerer: [
     {
+      id: 'starting-equipment',
+      name: 'Starting Equipment',
+      level: 1,
+      picks: 1,
+      options: [
+        { id: 'dagger-kit', name: 'Two Daggers', text: 'Two Daggers', equipment: ['dagger','dagger'] },
+        { id: 'light-crossbow', name: 'Light Crossbow', text: 'Light Crossbow', equipment: ['light-crossbow'] },
+      ],
+    },
+    {
       id: 'sorcerous-origin',
       name: 'Sorcerous Origin',
       level: 1,
@@ -405,9 +498,9 @@ const CLASS_FEATURE_DECISIONS: Record<string, ClassFeatureDecisionSpec[]> = {
       options: [
         { id: 'draconic-bloodline', name: 'Draconic Bloodline', text: 'Innate draconic magic strengthens body and spells.' },
         { id: 'wild-magic', name: 'Wild Magic', text: 'Unpredictable surges of magic can occur when casting.' },
-  { id: 'divine-soul', name: 'Divine Soul', text: 'Blend of arcane & divine; expanded spell access.' },
-  { id: 'shadow-magic', name: 'Shadow Magic', text: 'Shadowfell power grants darkness & survival tricks.' },
-  { id: 'storm-sorcery', name: 'Storm Sorcery', text: 'Tempestuous magic manipulates wind & lightning.' },
+        { id: 'divine-soul', name: 'Divine Soul', text: 'Blend of arcane & divine; expanded spell access.' },
+        { id: 'shadow-magic', name: 'Shadow Magic', text: 'Shadowfell power grants darkness & survival tricks.' },
+        { id: 'storm-sorcery', name: 'Storm Sorcery', text: 'Tempestuous magic manipulates wind & lightning.' },
       ],
     },
     {
@@ -424,6 +517,17 @@ const CLASS_FEATURE_DECISIONS: Record<string, ClassFeatureDecisionSpec[]> = {
     },
   ],
   ranger: [
+    {
+      id: 'starting-equipment',
+      name: 'Starting Equipment',
+      level: 1,
+      picks: 1,
+      options: [
+        { id: 'longbow-shortsword', name: 'Longbow & Shortsword', text: 'Longbow, Shortsword', equipment: ['longbow','shortsword'] },
+        { id: 'dual-shortswords', name: 'Dual Shortswords', text: 'Two Shortswords', equipment: ['shortsword','shortsword'] },
+        { id: 'sword-shield', name: 'Longsword & Shield', text: 'Longsword, Shield', equipment: ['longsword','shield'] },
+      ],
+    },
     {
       id: 'fighting-style',
       name: 'Fighting Style',
@@ -444,14 +548,25 @@ const CLASS_FEATURE_DECISIONS: Record<string, ClassFeatureDecisionSpec[]> = {
       options: [
         { id: 'hunter', name: 'Hunter', text: 'Gain defensive and offensive options tailored to hunting prey.' },
         { id: 'beast-master', name: 'Beast Master', text: 'Bond with a beast companion that fights alongside you.' },
-  { id: 'gloom-stalker', name: 'Gloom Stalker', text: 'Ambusher of the dark; excels in the first round and in darkness.' },
-  { id: 'horizon-walker', name: 'Horizon Walker', text: 'Planar guardian; detects portals and infuses attacks with force.' },
-  { id: 'monster-slayer', name: 'Monster Slayer', text: 'Focus on studying and defeating supernatural foes.' },
-  { id: 'swarmkeeper', name: 'Swarmkeeper', text: 'Command a nature spirit swarm for movement, damage, control.' },
+        { id: 'gloom-stalker', name: 'Gloom Stalker', text: 'Ambusher of the dark; excels in the first round and in darkness.' },
+        { id: 'horizon-walker', name: 'Horizon Walker', text: 'Planar guardian; detects portals and infuses attacks with force.' },
+        { id: 'monster-slayer', name: 'Monster Slayer', text: 'Focus on studying and defeating supernatural foes.' },
+        { id: 'swarmkeeper', name: 'Swarmkeeper', text: 'Command a nature spirit swarm for movement, damage, control.' },
       ],
     },
   ],
   rogue: [
+    {
+      id: 'starting-equipment',
+      name: 'Starting Equipment',
+      level: 1,
+      picks: 1,
+      options: [
+        { id: 'rapier-shortbow', name: 'Rapier & Shortbow', text: 'Rapier, Shortbow', equipment: ['rapier','shortbow'] },
+        { id: 'shortsword-shortbow', name: 'Shortsword & Shortbow', text: 'Shortsword, Shortbow', equipment: ['shortsword','shortbow'] },
+        { id: 'dual-daggers', name: 'Dual Daggers', text: 'Two Daggers', equipment: ['dagger','dagger'] },
+      ],
+    },
     {
       id: 'expertise',
       name: 'Expertise',
@@ -487,9 +602,36 @@ const CLASS_FEATURE_DECISIONS: Record<string, ClassFeatureDecisionSpec[]> = {
         { id: 'thief', name: 'Thief', text: 'Fast Hands and Second-Story Work (demo note).' },
         { id: 'assassin', name: 'Assassin', text: 'Bonus to disguises/poisons; devastating ambushes (demo note).' },
         { id: 'arcane-trickster', name: 'Arcane Trickster', text: 'Learn minor spells from the wizard list (demo note).' },
-  { id: 'swashbuckler', name: 'Swashbuckler', text: 'Flashy duelist; Rakish Audacity initiative & panache.' },
-  { id: 'soulknife', name: 'Soulknife', text: 'Psionic blades; telepathy & psychic utility.' },
-  { id: 'phantom', name: 'Phantom', text: 'Ghostly tokens; wails & necrotic versatility.' },
+        { id: 'swashbuckler', name: 'Swashbuckler', text: 'Flashy duelist; Rakish Audacity initiative & panache.' },
+        { id: 'soulknife', name: 'Soulknife', text: 'Psionic blades; telepathy & psychic utility.' },
+        { id: 'phantom', name: 'Phantom', text: 'Ghostly tokens; wails & necrotic versatility.' },
+      ],
+    },
+  ],
+  wizard: [
+    {
+      id: 'starting-equipment',
+      name: 'Starting Equipment',
+      level: 1,
+      picks: 1,
+      options: [
+        { id: 'dagger', name: 'Dagger', text: 'Dagger', equipment: ['dagger'] },
+        { id: 'spear', name: 'Spear (as Staff)', text: 'Spear (used as staff)', equipment: ['spear'] },
+        { id: 'light-crossbow', name: 'Light Crossbow', text: 'Light Crossbow', equipment: ['light-crossbow'] },
+      ],
+    },
+    {
+      id: 'arcane-tradition',
+      name: 'Arcane Tradition',
+      level: 2,
+      picks: 1,
+      options: [
+        { id: 'evocation', name: 'School of Evocation', text: 'Shape damaging spells to spare allies.' },
+        { id: 'abjuration', name: 'School of Abjuration', text: 'Protective warding magic.' },
+        { id: 'conjuration', name: 'School of Conjuration', text: 'Summon creatures & objects.' },
+        { id: 'divination', name: 'School of Divination', text: 'Portents reshape fate.' },
+        { id: 'illusion', name: 'School of Illusion', text: 'Deceive senses & craft phantasms.' },
+        { id: 'necromancy', name: 'School of Necromancy', text: 'Life & death energy manipulation.' },
       ],
     },
   ],
@@ -1210,6 +1352,34 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
       return changed ? out : cs
     })
   }, [classFeatureChoices])
+
+  // Auto-apply starting equipment decision (first class only for now) when chosen.
+  useEffect(() => {
+    // Gather selected equipment ids from any class starting-equipment decisions at level 1
+    const selectedEquipIds: string[] = []
+    classes.forEach(c => {
+      const specs = filteredClassFeatureDecisions(c)
+      const start = specs.find(d => d.id === 'starting-equipment' && (c.level || 0) >= d.level)
+      if (!start) return
+      const raw = classFeatureChoices[c.klass.id]?.[start.id]
+      const chosenId = Array.isArray(raw) ? raw[0] : raw
+      if (!chosenId) return
+      const opt = start.options.find(o => o.id === chosenId)
+      if (opt?.equipment) selectedEquipIds.push(...opt.equipment)
+    })
+    if (!selectedEquipIds.length) return
+    // Map to equipment objects, allow duplicates (e.g., two daggers) by adding first match multiple times
+    const next: Equipment[] = []
+    selectedEquipIds.forEach(id => {
+      const item = (EQUIPMENT as any[]).find(eq => (eq as any).id === id)
+      if (item) next.push(item as Equipment)
+    })
+    if (!next.length) return
+    // Only replace loadout if it differs from what decision would give (so user manual edits persist after manual change)
+    const currIds = loadout.map(i => (i as any).id)
+    const nextIds = next.map(i => (i as any).id)
+    if (JSON.stringify(currIds) !== JSON.stringify(nextIds)) setLoadout(next)
+  }, [classFeatureChoices, classes])
 
   // Auto-apply background/race granted skills. Excludes skillSources from deps to avoid feedback loop.
   useEffect(() => {

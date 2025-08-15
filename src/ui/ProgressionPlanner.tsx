@@ -441,7 +441,7 @@ function ProgressStepNode({ id, data }: { id: string; data: ProgressStepData }) 
         <div style={{ position: 'absolute', right: 0, top: 28, display: 'grid', gap: 6, background: 'white', border: '1px solid #e2e8f0', borderRadius: 8, padding: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.12)' }} onClick={(e) => e.stopPropagation()}>
           <button className="nodrag nopan" style={btn} onClick={(e) => { e.preventDefault(); handleDelete(e as any); const dtl = (e.currentTarget as HTMLElement).closest('details') as HTMLDetailsElement | null; if (dtl) dtl.removeAttribute('open') }}>Delete</button>
           <button className="nodrag nopan" style={btn} onClick={(e) => { e.preventDefault(); toggleCollapsed(); const dtl = (e.currentTarget as HTMLElement).closest('details') as HTMLDetailsElement | null; if (dtl) dtl.removeAttribute('open') }}>{data.collapsed ? 'Show' : 'Hide'}</button>
-          {data.onApply ? (<button className="nodrag nopan" style={btn} onClick={(e) => { e.preventDefault(); data.onApply?.(); const dtl = (e.currentTarget as HTMLElement).closest('details') as HTMLDetailsElement | null; if (dtl) dtl.removeAttribute('open') }}>Apply to Builder</button>) : null}
+          {data.onApply ? (<button className="nodrag nopan" style={btn} onClick={(e) => { e.preventDefault(); data.onApply?.(); const dtl = (e.currentTarget as HTMLElement).closest('details') as HTMLDetailsElement | null; if (dtl) dtl.removeAttribute('open') }}>Apply to Character Builder</button>) : null}
           {data.onCloneFromSelf ? (<button className="nodrag nopan" style={btn} onClick={(e) => { e.preventDefault(); data.onCloneFromSelf?.(); const dtl = (e.currentTarget as HTMLElement).closest('details') as HTMLDetailsElement | null; if (dtl) dtl.removeAttribute('open') }}>Duplicate Branch</button>) : null}
         </div>
       </details>
@@ -704,7 +704,7 @@ function RootNode({ id, data }: { id: string; data: RootNodeData }) {
             <button className="nodrag nopan" style={btn} onClick={(e) => { e.preventDefault(); data.onClone?.(); const dtl = (e.currentTarget as HTMLElement).closest('details') as HTMLDetailsElement | null; if (dtl) dtl.removeAttribute('open') }}>Duplicate Branch</button>
           ) : null}
           {data.onApply ? (
-            <button className="nodrag nopan" style={btn} onClick={(e) => { e.preventDefault(); data.onApply?.(); const dtl = (e.currentTarget as HTMLElement).closest('details') as HTMLDetailsElement | null; if (dtl) dtl.removeAttribute('open') }}>Apply to Builder</button>
+            <button className="nodrag nopan" style={btn} onClick={(e) => { e.preventDefault(); data.onApply?.(); const dtl = (e.currentTarget as HTMLElement).closest('details') as HTMLDetailsElement | null; if (dtl) dtl.removeAttribute('open') }}>Apply to Character Builder</button>
           ) : null}
         </div>
       </details>
@@ -1014,7 +1014,7 @@ function buildPlanFromStart(nodes: any[], edges: any[], startId: string) {
   return plan
 }
 
-// Sidebar helper: pick a root, duplicate its branch, or apply to Builder
+// Sidebar helper: pick a root, duplicate its branch, or apply to Character Builder
 function BranchActions(props: {
   nodes: any[]
   edges: any[]
@@ -1046,7 +1046,7 @@ function BranchActions(props: {
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         <button disabled={!selectedRoot} onClick={() => selectedRoot && props.onClone(selectedRoot)} style={btn}>Duplicate Branch</button>
   <button onClick={() => props.onCreateRoot?.()} style={btn}>+ New Root</button>
-  <button disabled={!selectedRoot} onClick={() => { const p = buildPlan(); if (p && props.onApplyPlan) props.onApplyPlan(p) }} style={btn}>Apply to Builder</button>
+  <button disabled={!selectedRoot} onClick={() => { const p = buildPlan(); if (p && props.onApplyPlan) props.onApplyPlan(p) }} style={btn}>Apply to Character Builder</button>
       </div>
     </div>
   )
@@ -1954,7 +1954,7 @@ export function ProgressionPlanner(props: { character?: BuilderState; derived?: 
                     dismissReseedPrompt()
                   }}
                   style={{ ...btn, background: '#0ea5e9', borderColor: '#0284c7', color: 'white' }}
-                >Reseed from Builder</button>
+                >Reseed from Character Builder</button>
               </div>
             </div>
           </div>
@@ -1987,7 +1987,7 @@ export function ProgressionPlanner(props: { character?: BuilderState; derived?: 
                 ))}
               </select>
             </label>
-            <div style={{ fontSize: 12, color: '#64748b' }}>The active branch is highlighted and drives the “Apply to Builder”.</div>
+            <div style={{ fontSize: 12, color: '#64748b' }}>The active branch is highlighted and drives the “Apply to Character Builder”.</div>
           </div>
         </section>
 

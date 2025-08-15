@@ -2,10 +2,9 @@ import React, { useEffect, useMemo, useState } from 'react'
 import Builder, { AppState as BuilderState } from './Builder.tsx'
 import { NodeOptimizer } from './NodeOptimizer.tsx'
 import ProgressionPlanner from './ProgressionPlanner.tsx'
-import CombatTracker from './CombatTracker.tsx'
-import EncounterSimulator from './EncounterSimulator.tsx'
 import { RulesProvider, useRules } from './RulesContext.tsx'
 import { RulesDrawer } from './RulesDrawer.tsx'
+import { CharacterSheet } from './CharacterSheet.tsx'
 
 function RulesButton() {
   const { setOpen } = useRules()
@@ -18,7 +17,7 @@ function RulesButton() {
 }
 
 export function App() {
-  const [tab, setTab] = useState<'builder' | 'planner' | 'optimizer' | 'combat' | 'sim'>('builder')
+  const [tab, setTab] = useState<'builder' | 'sheet' | 'planner' | 'optimizer'>('builder')
   const [character, setCharacter] = useState<BuilderState | undefined>(undefined)
   const [derived, setDerived] = useState<any>(undefined)
   // theme
@@ -71,11 +70,10 @@ export function App() {
           <h1 style={{ margin: 0, fontSize: 20, letterSpacing: 0.2, fontWeight: 700 }}>TTRPG Character Creator (5e)</h1>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <nav style={{ display: 'flex', gap: 8 }}>
+              <button onClick={() => setTab('sheet')} style={btn(tab === 'sheet')}>Character Sheet</button>
               <button onClick={() => setTab('builder')} style={btn(tab === 'builder')}>Character Builder</button>
               <button onClick={() => setTab('planner')} style={btn(tab === 'planner')}>Progression Planner</button>
-              <button onClick={() => setTab('optimizer')} style={btn(tab === 'optimizer')}>DPR Graph Optimizer</button>
-              <button onClick={() => setTab('combat')} style={btn(tab === 'combat')}>Combat Tracker</button>
-              <button onClick={() => setTab('sim')} style={btn(tab === 'sim')}>Encounter Simulator</button>
+              <button onClick={() => setTab('optimizer')} style={btn(tab === 'optimizer')}>Damage Calculator</button>
             </nav>
             <RulesButton />
           </div>
@@ -87,15 +85,13 @@ export function App() {
           <div style={{ maxWidth: 1200, margin: '0 auto' }}>
             <Builder importPlan={importPlan} onCharacterChange={(s, d) => { setCharacter(s); setDerived(d) }} />
           </div>
+        ) : tab === 'sheet' ? (
+          <CharacterSheet character={character} derived={derived} />
         ) : tab === 'planner' ? (
           <ProgressionPlanner character={character} derived={derived} onApplyPlan={onApplyPlan} />
         ) : tab === 'optimizer' ? (
           <NodeOptimizer character={character} derived={derived} />
-        ) : tab === 'combat' ? (
-          <CombatTracker />
-        ) : (
-          <EncounterSimulator />
-        )}
+        ) : null}
       </main>
   <RulesDrawer theme={theme} setTheme={setTheme} activeClassIds={(character?.classes||[]).map(c=>c.klass.id)} />
     </div>

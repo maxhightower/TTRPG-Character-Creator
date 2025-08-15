@@ -317,6 +317,10 @@ export const CLASSES: Klass[] = [
     subclasses: [
       { id: 'college-of-lore', name: 'College of Lore', unlockLevel: 3, grants: { subactions: [] } },
       { id: 'college-of-valor', name: 'College of Valor', unlockLevel: 3, grants: { subactions: [] } },
+  { id: 'college-of-glamour', name: 'College of Glamour', unlockLevel: 3, grants: { subactions: ['Mantle of Inspiration', 'Enthralling Performance'] } },
+  { id: 'college-of-swords', name: 'College of Swords', unlockLevel: 3, grants: { subactions: ['Blade Flourish'] } },
+  { id: 'college-of-whispers', name: 'College of Whispers', unlockLevel: 3, grants: { subactions: ['Psychic Blades', 'Mantle of Whispers'] } },
+  { id: 'college-of-eloquence', name: 'College of Eloquence', unlockLevel: 3, grants: { subactions: ['Unsettling Words', 'Silver Tongue'] } },
     ],
   },
   {
