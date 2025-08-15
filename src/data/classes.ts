@@ -136,6 +136,10 @@ export const CLASSES: Klass[] = [
     subclasses: [
       { id: 'hunter', name: 'Hunter', unlockLevel: 3 },
       { id: 'beast-master', name: 'Beast Master', unlockLevel: 3 },
+  { id: 'gloom-stalker', name: 'Gloom Stalker', unlockLevel: 3 },
+  { id: 'horizon-walker', name: 'Horizon Walker', unlockLevel: 3 },
+  { id: 'monster-slayer', name: 'Monster Slayer', unlockLevel: 3 },
+  { id: 'swarmkeeper', name: 'Swarmkeeper', unlockLevel: 3 },
     ],
   },
   {
@@ -168,6 +172,9 @@ export const CLASSES: Klass[] = [
       { id: 'thief', name: 'Thief', unlockLevel: 3 },
       { id: 'assassin', name: 'Assassin', unlockLevel: 3 },
       { id: 'arcane-trickster', name: 'Arcane Trickster', unlockLevel: 3 },
+  { id: 'swashbuckler', name: 'Swashbuckler', unlockLevel: 3 },
+  { id: 'soulknife', name: 'Soulknife', unlockLevel: 3 },
+  { id: 'phantom', name: 'Phantom', unlockLevel: 3 },
     ],
   },
   {
@@ -203,6 +210,9 @@ export const CLASSES: Klass[] = [
     subclasses: [
       { id: 'open-hand', name: 'Way of the Open Hand', unlockLevel: 3, grants: { subactions: [] } },
       { id: 'shadow', name: 'Way of Shadow', unlockLevel: 3, grants: { subactions: [] } },
+  { id: 'four-elements', name: 'Way of the Four Elements', unlockLevel: 3, grants: { subactions: ['Elemental Discipline'] } },
+  { id: 'kensei', name: 'Way of the Kensei', unlockLevel: 3, grants: { subactions: ['Kensei Shot'] } },
+  { id: 'mercy', name: 'Way of Mercy', unlockLevel: 3, grants: { subactions: ['Hands of Healing', 'Hands of Harm'] } },
     ],
   },
   {
@@ -236,6 +246,10 @@ export const CLASSES: Klass[] = [
     subclasses: [
       { id: 'oath-devotion', name: 'Oath of Devotion', unlockLevel: 3, grants: { subactions: ['Channel Divinity (Devotion)'] } },
       { id: 'oath-vengeance', name: 'Oath of Vengeance', unlockLevel: 3, grants: { subactions: ['Channel Divinity (Vengeance)'] } },
+  { id: 'oath-ancients', name: 'Oath of the Ancients', unlockLevel: 3, grants: { subactions: ['Channel Divinity (Ancients)'] } },
+  { id: 'oath-conquest', name: 'Oath of Conquest', unlockLevel: 3, grants: { subactions: ['Channel Divinity (Conquest)'] } },
+  { id: 'oath-redemption', name: 'Oath of Redemption', unlockLevel: 3, grants: { subactions: ['Channel Divinity (Redemption)'] } },
+  { id: 'oath-glory', name: 'Oath of Glory', unlockLevel: 3, grants: { subactions: ['Channel Divinity (Glory)'] } },
     ],
   },
   {
@@ -266,6 +280,10 @@ export const CLASSES: Klass[] = [
     saves: ['str', 'con'],
     subclasses: [
       { id: 'champion', name: 'Champion', unlockLevel: 3, grants: { subactions: ['Improved Critical'] } },
+  { id: 'battle-master', name: 'Battle Master', unlockLevel: 3, grants: { subactions: ['Superiority Dice', 'Combat Maneuver'] } },
+  { id: 'eldritch-knight', name: 'Eldritch Knight', unlockLevel: 3, grants: { subactions: ['Cast Spell', 'Weapon Bond'] } },
+  { id: 'rune-knight', name: 'Rune Knight', unlockLevel: 3, grants: { subactions: ["Giant's Might", 'Invoke Rune'] } },
+  { id: 'samurai', name: 'Samurai', unlockLevel: 3, grants: { subactions: ['Fighting Spirit'] } },
     ],
   },
   {
@@ -328,6 +346,10 @@ export const CLASSES: Klass[] = [
     subclasses: [
       { id: 'life-domain', name: 'Life Domain', unlockLevel: 1, grants: { subactions: ['Channel Divinity: Preserve Life'] } },
       { id: 'light-domain', name: 'Light Domain', unlockLevel: 1, grants: { subactions: ['Channel Divinity: Radiance of the Dawn'] } },
+  { id: 'tempest-domain', name: 'Tempest Domain', unlockLevel: 1, grants: { subactions: ['Channel Divinity: Destructive Wrath'] } },
+  { id: 'twilight-domain', name: 'Twilight Domain', unlockLevel: 1, grants: { subactions: ['Channel Divinity: Twilight Sanctuary'] } },
+  { id: 'peace-domain', name: 'Peace Domain', unlockLevel: 1, grants: { subactions: ['Channel Divinity: Balm of Peace'] } },
+  { id: 'forge-domain', name: 'Forge Domain', unlockLevel: 1, grants: { subactions: ['Channel Divinity: Artisan’s Blessing'] } },
     ],
   },
   {
@@ -357,6 +379,10 @@ export const CLASSES: Klass[] = [
     subclasses: [
       { id: 'circle-land', name: 'Circle of the Land', unlockLevel: 2, grants: { subactions: [] } },
       { id: 'circle-moon', name: 'Circle of the Moon', unlockLevel: 2, grants: { subactions: ['Combat Wild Shape'] } },
+  { id: 'circle-dreams', name: 'Circle of Dreams', unlockLevel: 2, grants: { subactions: ['Balm of the Summer Court'] } },
+  { id: 'circle-shepherd', name: 'Circle of the Shepherd', unlockLevel: 2, grants: { subactions: ['Spirit Totem'] } },
+  { id: 'circle-spores', name: 'Circle of Spores', unlockLevel: 2, grants: { subactions: ['Halo of Spores'] } },
+  { id: 'circle-wildfire', name: 'Circle of Wildfire', unlockLevel: 2, grants: { subactions: ['Summon Wildfire Spirit'] } },
     ],
   },
   {
@@ -384,6 +410,11 @@ export const CLASSES: Klass[] = [
     saves: ['int', 'wis'],
     subclasses: [
       { id: 'evocation', name: 'School of Evocation', unlockLevel: 2, grants: { subactions: ['Sculpt Spells'] } },
+  { id: 'abjuration', name: 'School of Abjuration', unlockLevel: 2, grants: { subactions: ['Arcane Ward'] } },
+  { id: 'conjuration', name: 'School of Conjuration', unlockLevel: 2, grants: { subactions: ['Minor Conjuration'] } },
+  { id: 'divination', name: 'School of Divination', unlockLevel: 2, grants: { subactions: ['Portent'] } },
+  { id: 'illusion', name: 'School of Illusion', unlockLevel: 2, grants: { subactions: ['Improved Illusion'] } },
+  { id: 'necromancy', name: 'School of Necromancy', unlockLevel: 2, grants: { subactions: ['Grim Harvest'] } },
     ],
   },
   {
@@ -413,6 +444,9 @@ export const CLASSES: Klass[] = [
       { id: 'fiend', name: 'The Fiend', unlockLevel: 1 },
       { id: 'archfey', name: 'The Archfey', unlockLevel: 1 },
       { id: 'great-old-one', name: 'The Great Old One', unlockLevel: 1 },
+  { id: 'celestial', name: 'The Celestial', unlockLevel: 1 },
+  { id: 'hexblade', name: 'The Hexblade', unlockLevel: 1 },
+  { id: 'genie', name: 'The Genie', unlockLevel: 1 },
     ],
   },
   {
@@ -441,6 +475,9 @@ export const CLASSES: Klass[] = [
     subclasses: [
       { id: 'draconic-bloodline', name: 'Draconic Bloodline', unlockLevel: 1 },
       { id: 'wild-magic', name: 'Wild Magic', unlockLevel: 1 },
+  { id: 'divine-soul', name: 'Divine Soul', unlockLevel: 1 },
+  { id: 'shadow-magic', name: 'Shadow Magic', unlockLevel: 1 },
+  { id: 'storm-sorcery', name: 'Storm Sorcery', unlockLevel: 1 },
     ],
   },
 ]

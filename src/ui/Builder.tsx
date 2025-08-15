@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect, useRef } from 'react'
-import { Plus, Info, Redo2, Scale, Settings2, Shield, Sparkles, Sword, Undo2, List, Columns, LayoutGrid } from 'lucide-react'
+import { Plus, Info, Redo2, Scale, Settings2, Shield, Sparkles, Sword, Undo2, List, Columns, LayoutGrid, ChevronDown, ChevronRight, Heart as HeartIcon } from 'lucide-react'
 import { useRules } from './RulesContext.tsx'
 // Externalized shared types and data
 import type { AbilityKey, Background, Spell, MagicSchool, DamageType, Equipment, Feat } from '../data/types'
@@ -273,6 +273,10 @@ const CLASS_FEATURE_DECISIONS: Record<string, ClassFeatureDecisionSpec[]> = {
       options: [
         { id: 'oath-devotion', name: 'Oath of Devotion', text: 'Channel Divinity options: Sacred Weapon, Turn the Unholy.' },
         { id: 'oath-vengeance', name: 'Oath of Vengeance', text: 'Channel Divinity options: Abjure Enemy, Vow of Enmity.' },
+  { id: 'oath-ancients', name: 'Oath of the Ancients', text: 'Channel Divinity: Nature’s Wrath, Turn the Faithless.' },
+  { id: 'oath-conquest', name: 'Oath of Conquest', text: 'Channel Divinity: Conquering Presence, Guided Strike (flavored for conquest).' },
+  { id: 'oath-redemption', name: 'Oath of Redemption', text: 'Channel Divinity: Emissary of Peace, Rebuke the Violent.' },
+  { id: 'oath-glory', name: 'Oath of Glory', text: 'Channel Divinity: Peerless Athlete, Inspiring Smite.' },
       ],
     },
   ],
@@ -285,6 +289,10 @@ const CLASS_FEATURE_DECISIONS: Record<string, ClassFeatureDecisionSpec[]> = {
       options: [
         { id: 'life-domain', name: 'Life Domain', text: 'Healer‑focused domain; Channel Divinity: Preserve Life.' },
         { id: 'light-domain', name: 'Light Domain', text: 'Radiant/Fire domain; Channel Divinity: Radiance of the Dawn.' },
+  { id: 'tempest-domain', name: 'Tempest Domain', text: 'Storm power; Channel Divinity: Destructive Wrath.' },
+  { id: 'twilight-domain', name: 'Twilight Domain', text: 'Soothing dusk magic; Channel Divinity: Twilight Sanctuary.' },
+  { id: 'peace-domain', name: 'Peace Domain', text: 'Harmony & bonds; Channel Divinity: Balm of Peace.' },
+  { id: 'forge-domain', name: 'Forge Domain', text: 'Creation & craft; Channel Divinity: Artisan’s Blessing.' },
       ],
     },
   ],
@@ -297,6 +305,10 @@ const CLASS_FEATURE_DECISIONS: Record<string, ClassFeatureDecisionSpec[]> = {
       options: [
         { id: 'circle-land', name: 'Circle of the Land', text: 'Bonus spells and recovery tied to the land.' },
         { id: 'circle-moon', name: 'Circle of the Moon', text: 'Combat‑focused Wild Shape improvements.' },
+  { id: 'circle-dreams', name: 'Circle of Dreams', text: 'Fey‑touched healing & teleportation (Balm of the Summer Court).' },
+  { id: 'circle-shepherd', name: 'Circle of the Shepherd', text: 'Summoning & spirit totems to aid allies.' },
+  { id: 'circle-spores', name: 'Circle of Spores', text: 'Fungal decay magic; necrotic Halo of Spores.' },
+  { id: 'circle-wildfire', name: 'Circle of Wildfire', text: 'Flame‑and‑regrowth magic with Wildfire Spirit companion.' },
       ],
     },
   ],
@@ -350,6 +362,9 @@ const CLASS_FEATURE_DECISIONS: Record<string, ClassFeatureDecisionSpec[]> = {
       options: [
         { id: 'open-hand', name: 'Way of the Open Hand', text: 'Enhance Flurry of Blows with additional effects.' },
         { id: 'shadow', name: 'Way of Shadow', text: 'Ki‑powered stealth and shadow arts.' },
+  { id: 'four-elements', name: 'Way of the Four Elements', text: 'Spend ki to cast elemental disciplines (fire, water, earth, air).' },
+  { id: 'kensei', name: 'Way of the Kensei', text: 'Weapon‑master monk; agile martial weapon techniques.' },
+  { id: 'mercy', name: 'Way of Mercy', text: 'Mask of compassion; healing and necrotic ki strikes.' },
       ],
     },
   ],
@@ -363,6 +378,9 @@ const CLASS_FEATURE_DECISIONS: Record<string, ClassFeatureDecisionSpec[]> = {
         { id: 'fiend', name: 'The Fiend', text: 'Dark bargains grant destructive power.' },
         { id: 'archfey', name: 'The Archfey', text: 'Fey patrons grant beguiling and trickster magic.' },
         { id: 'great-old-one', name: 'The Great Old One', text: 'Alien entities gift telepathy and mind‑bending magic.' },
+  { id: 'celestial', name: 'The Celestial', text: 'Heavenly patron grants healing and radiant power.' },
+  { id: 'hexblade', name: 'The Hexblade', text: 'Shadowy weapon pact; martial & curse features.' },
+  { id: 'genie', name: 'The Genie', text: 'Elemental vessel bestows wish‑tinged versatility.' },
       ],
     },
     {
@@ -387,6 +405,9 @@ const CLASS_FEATURE_DECISIONS: Record<string, ClassFeatureDecisionSpec[]> = {
       options: [
         { id: 'draconic-bloodline', name: 'Draconic Bloodline', text: 'Innate draconic magic strengthens body and spells.' },
         { id: 'wild-magic', name: 'Wild Magic', text: 'Unpredictable surges of magic can occur when casting.' },
+  { id: 'divine-soul', name: 'Divine Soul', text: 'Blend of arcane & divine; expanded spell access.' },
+  { id: 'shadow-magic', name: 'Shadow Magic', text: 'Shadowfell power grants darkness & survival tricks.' },
+  { id: 'storm-sorcery', name: 'Storm Sorcery', text: 'Tempestuous magic manipulates wind & lightning.' },
       ],
     },
     {
@@ -423,6 +444,10 @@ const CLASS_FEATURE_DECISIONS: Record<string, ClassFeatureDecisionSpec[]> = {
       options: [
         { id: 'hunter', name: 'Hunter', text: 'Gain defensive and offensive options tailored to hunting prey.' },
         { id: 'beast-master', name: 'Beast Master', text: 'Bond with a beast companion that fights alongside you.' },
+  { id: 'gloom-stalker', name: 'Gloom Stalker', text: 'Ambusher of the dark; excels in the first round and in darkness.' },
+  { id: 'horizon-walker', name: 'Horizon Walker', text: 'Planar guardian; detects portals and infuses attacks with force.' },
+  { id: 'monster-slayer', name: 'Monster Slayer', text: 'Focus on studying and defeating supernatural foes.' },
+  { id: 'swarmkeeper', name: 'Swarmkeeper', text: 'Command a nature spirit swarm for movement, damage, control.' },
       ],
     },
   ],
@@ -462,6 +487,9 @@ const CLASS_FEATURE_DECISIONS: Record<string, ClassFeatureDecisionSpec[]> = {
         { id: 'thief', name: 'Thief', text: 'Fast Hands and Second-Story Work (demo note).' },
         { id: 'assassin', name: 'Assassin', text: 'Bonus to disguises/poisons; devastating ambushes (demo note).' },
         { id: 'arcane-trickster', name: 'Arcane Trickster', text: 'Learn minor spells from the wizard list (demo note).' },
+  { id: 'swashbuckler', name: 'Swashbuckler', text: 'Flashy duelist; Rakish Audacity initiative & panache.' },
+  { id: 'soulknife', name: 'Soulknife', text: 'Psionic blades; telepathy & psychic utility.' },
+  { id: 'phantom', name: 'Phantom', text: 'Ghostly tokens; wails & necrotic versatility.' },
       ],
     },
   ],
@@ -594,7 +622,8 @@ function computeDerived(state: AppState, opts?: RuleOpts) {
   const armor = state.loadout.find((i) => i.type === 'armor') as Extract<Equipment, { type: 'armor' }> | undefined
   const shield = state.loadout.find((i) => i.type === 'shield') as Extract<Equipment, { type: 'shield' }> | undefined
 
-  const totalLevel = Math.max(1, state.classes.reduce((s, c) => s + (c.level || 0), 0) || 1)
+  const rawTotal = state.classes.reduce((s, c) => s + (c.level || 0), 0)
+  const totalLevel = state.classes.length ? rawTotal : 0
 
   let ac = 10 + dexMod
   if (armor) {
@@ -607,13 +636,16 @@ function computeDerived(state: AppState, opts?: RuleOpts) {
   if (shield) ac += shield.ac ?? 2
 
   // HP: base at first level from the first selected class, then average per-level per class
-  const firstHitDie = state.classes[0]?.klass.hitDie ?? 8
-  let hp = firstHitDie + conMod
-  state.classes.forEach((c, idx) => {
-    const perLevel = Math.max(1, Math.floor(c.klass.hitDie / 2) + 1 + conMod)
-    const extraLevels = Math.max(0, (c.level || 0) - (idx === 0 ? 1 : 0))
-    hp += extraLevels * perLevel
-  })
+  let hp = 0
+  if (state.classes.length) {
+    const firstHitDie = state.classes[0]?.klass.hitDie ?? 8
+    hp = firstHitDie + conMod
+    state.classes.forEach((c, idx) => {
+      const perLevel = Math.max(1, Math.floor(c.klass.hitDie / 2) + 1 + conMod)
+      const extraLevels = Math.max(0, (c.level || 0) - (idx === 0 ? 1 : 0))
+      hp += extraLevels * perLevel
+    })
+  }
   // Feat: Tough adds +2 HP per total level
   if ((state.feats || []).includes('tough')) {
     hp += 2 * totalLevel
@@ -621,8 +653,8 @@ function computeDerived(state: AppState, opts?: RuleOpts) {
 
   const speed = state.race?.speed ?? 30
 
-  const classSubs = state.classes.flatMap((c) => c.klass.grants?.subactions ?? [])
-  const subclassSubs = state.classes.flatMap((c) => c.subclass?.grants?.subactions ?? [])
+  const classSubs = state.classes.filter(c => (c.level||0) > 0).flatMap((c) => c.klass.grants?.subactions ?? [])
+  const subclassSubs = state.classes.filter(c => (c.level||0) > 0).flatMap((c) => c.subclass?.grants?.subactions ?? [])
   const itemSubs = state.loadout.flatMap((i) => SUBACTIONS_BY_ITEM[(i as any).id] ?? [])
   const subactions = dedupe([...classSubs, ...subclassSubs, ...itemSubs])
 
@@ -652,7 +684,9 @@ function computeDerived(state: AppState, opts?: RuleOpts) {
   // Saving throws (union of class save proficiencies)
   const final = finalAbility(state.abilities, state.race, state.asi, opts)
   const prof = proficiencyBonus(totalLevel)
-  let saveProfs = dedupe(state.classes.flatMap((c) => c.klass.saves ?? []))
+  // Saving throw proficiencies: per 5e core rules only the FIRST class taken grants save proficiencies.
+  // Previously this was a union of all class save arrays; that incorrectly awarded extra proficiencies on multiclass dips.
+  let saveProfs = state.classes.length ? ([...(state.classes[0].klass.saves || [])] as AbilityKey[]) : []
   if ((state.feats || []).includes('resilient')) {
     const ra = (state as any).featChoices?.resilientAbility as AbilityKey | undefined
     if (ra && !saveProfs.includes(ra)) saveProfs = [...saveProfs, ra]
@@ -668,7 +702,7 @@ function computeDerived(state: AppState, opts?: RuleOpts) {
 
   // Initiative (DEX mod plus Alert +5)
   const initiative = dexMod + ((state.feats || []).includes('alert') ? 5 : 0)
-  return { ac, hp, speed, subactions, dexMod, conMod, strMod, saves, totalLevel, initiative, rageUses, rageDamageBonus, barbarianLevel }
+  return { ac, hp, speed, subactions, dexMod, conMod, strMod, saves, saveProfs, totalLevel, initiative, rageUses, rageDamageBonus, barbarianLevel }
 }
 
 // simulateReadiness removed
@@ -716,8 +750,8 @@ function Card(props: { children: React.ReactNode }) {
 function CardHeader(props: { children: React.ReactNode }) {
   return <div style={{ padding: '14px 16px', borderBottom: '1px solid #e2e8f0' }}>{props.children}</div>
 }
-function CardTitle(props: { children: React.ReactNode }) {
-  return <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontWeight: 700, fontSize: 15 }}>{props.children}</div>
+function CardTitle(props: { children: React.ReactNode; style?: React.CSSProperties }) {
+  return <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontWeight: 700, fontSize: 15, ...(props.style || {}) }}>{props.children}</div>
 }
 function CardContent(props: { children: React.ReactNode }) {
   return <div style={{ padding: 16, display: 'grid', gap: 12 }}>{props.children}</div>
@@ -731,6 +765,16 @@ const badgeOutline: React.CSSProperties = { padding: '2px 8px', borderRadius: 99
 const card: React.CSSProperties = { border: '1px solid var(--muted-border)', borderRadius: 12, background: 'var(--card-bg)', boxShadow: '0 2px 8px rgba(15,23,42,0.05)', position: 'relative' }
 const progTh: React.CSSProperties = { padding: '6px 8px', textAlign: 'left', fontWeight: 600, fontSize: 11, letterSpacing: 0.5, textTransform: 'uppercase', borderLeft: '1px solid var(--muted-border)', whiteSpace: 'nowrap' }
 const progTd: React.CSSProperties = { padding: '6px 8px', textAlign: 'center', fontSize: 12, verticalAlign: 'top' }
+
+// Compact prominent stat badge used in Live Summary
+function StatBadge({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div style={{ minWidth: 60, textAlign: 'center' }}>
+      <div style={{ fontSize: 18, fontWeight: 700, lineHeight: 1 }}>{value}</div>
+      <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: '.5px', color: '#64748b', marginTop: 2 }}>{label.toUpperCase()}</div>
+    </div>
+  )
+}
 
 // Placeholder maps restored after refactor (simplified). Replace with richer data as needed.
 const RACE_TRAIT_SKILLS: Record<string, string[]> = {}
@@ -808,11 +852,12 @@ function BranchProgressionSelector(props: { characterName?: string; currentClass
                 // apply immediately (aggregate duplicate classes into levels)
                 const count: Record<string, { klass: Klass; level: number }> = {}
                 seq.forEach(name => {
-                  const k = CLASSES.find(c => c.name === name) || CLASSES[0]
+                  const k = CLASSES.find(c => c.name === name)
+                  if (!k) return
                   if (count[k.id]) count[k.id].level += 1; else count[k.id] = { klass: k, level: 1 }
                 })
                 const out = Object.values(count)
-                props.onSelectSequence(out, seq.map(n => (CLASSES.find(c => c.name === n) || CLASSES[0]).id))
+                props.onSelectSequence(out, seq.map(n => (CLASSES.find(c => c.name === n)) ).filter(Boolean).map(k => (k as Klass).id))
               }
             }
           }
@@ -826,11 +871,12 @@ function BranchProgressionSelector(props: { characterName?: string; currentClass
     // Aggregate duplicates so UI shows one card per class while preserving chronological order separately
     const count: Record<string, { klass: Klass; level: number; subclass?: Subclass }> = {}
     seq.forEach(name => {
-      const k = CLASSES.find(c => c.name === name) || CLASSES[0]
+      const k = CLASSES.find(c => c.name === name)
+      if (!k) return
       if (count[k.id]) count[k.id].level += 1; else count[k.id] = { klass: k, level: 1 }
     })
     const out = Object.values(count)
-    const orderIds = seq.map(n => (CLASSES.find(c => c.name === n) || CLASSES[0]).id)
+    const orderIds = seq.map(n => CLASSES.find(c => c.name === n)).filter(Boolean).map(k => (k as Klass).id)
     props.onSelectSequence(out, orderIds)
   }
 
@@ -855,11 +901,9 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
   const [mode, setMode] = useState<'guided' | 'power'>('power')
   const [name, setName] = useState('New Hero')
   const [race, setRace] = useState<Race>(RACES[0])
-  const [classes, setClasses] = useState<Array<{ klass: Klass; level: number; subclass?: Subclass }>>([
-    { klass: CLASSES[0], level: 1 },
-  ])
+  const [classes, setClasses] = useState<Array<{ klass: Klass; level: number; subclass?: Subclass }>>([])
   // Chronological record of each level pick in order pressed (stores class ids in sequence)
-  const [classLevelOrder, setClassLevelOrder] = useState<string[]>([CLASSES[0].id])
+  const [classLevelOrder, setClassLevelOrder] = useState<string[]>([])
   // Collapse duplicate single-level class entries (artifact from earlier sequence mode) into aggregated levels
   useEffect(() => {
     if (classes.length <= 1) return
@@ -889,6 +933,9 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
   const [skillLayout, setSkillLayout] = useState<'single' | 'double' | 'grid'>('grid')
   // Track sources that grant a skill (bg, race, class:<id>) to avoid orange toggling issues
   const [skillSources, setSkillSources] = useState<Record<string, string[]>>({})
+  // Ref mirror to allow snapshot comparisons without creating dependency loops
+  const skillSourcesRef = useRef<Record<string, string[]>>({})
+  useEffect(() => { skillSourcesRef.current = skillSources }, [skillSources])
   // Skills tab view
   const [skillTab, setSkillTab] = useState<'list' | 'sources'>('list')
   // Pending choices local selections
@@ -911,6 +958,40 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
   const [showFullProgression, setShowFullProgression] = useState(false)
   // Chronological sequence from imported Planner plan (includes future levels). Empty when none imported.
   const [importedPlanSequence, setImportedPlanSequence] = useState<Array<{ klass: Klass; subclass?: Subclass; future?: boolean }>>([])
+  // When true, temporarily suppress automatic reconciliation of classes from importedPlanSequence (e.g. right after Apply).
+  const [suppressPlanReconcile, setSuppressPlanReconcile] = useState(false)
+  // Debug flag
+  const debugPlanSync = true
+  // Reconcile aggregated class levels with present (non-future) entries of imported plan
+  useEffect(() => {
+    if (!importedPlanSequence.length) return
+    if (suppressPlanReconcile) { if (debugPlanSync) console.log('[PlanSync] Reconcile skipped (suppressed)'); return }
+  // Build the exact chronological list of present (non-future) classIds from the plan.
+  // NOTE: We now explicitly test for future === false so only entries intentionally
+  // marked present (or defaulted to false) are counted. This makes the dependency on
+  // the future flag clearer and avoids accidental truthy/undefined coercion changes.
+  const presentSequence = importedPlanSequence.filter(e => e.future === false).map(e => e.klass.id)
+    if (debugPlanSync) console.log('[PlanSync] Reconcile start', { importedPlanSequence: importedPlanSequence.map(e=>({id:e.klass.id,f:e.future})), presentSequence, currentClasses: classes.map(c=>({id:c.klass.id,l:c.level})) })
+    // Derive aggregated levels from that sequence.
+    const agg: Record<string, number> = {}
+    presentSequence.forEach(id => { agg[id] = (agg[id]||0)+1 })
+    // Compare to current aggregated classes; update only if different.
+    let needUpdate = false
+    const newClasses = Object.entries(agg).map(([id, lvl]) => {
+      const existing = classes.find(c => c.klass.id === id)
+      if (!existing || existing.level !== lvl) needUpdate = true
+      return { klass: existing?.klass || CLASSES.find(k => k.id === id)!, level: lvl, subclass: existing?.subclass }
+    })
+    // Preserve subclass references for classes removed (not present) is unnecessary; they drop out.
+    if (newClasses.length !== classes.length) needUpdate = true
+    if (needUpdate) {
+      if (debugPlanSync) console.log('[PlanSync] Reconcile applying newClasses', newClasses.map(c=>({id:c.klass.id,l:c.level})))
+      setClasses(newClasses)
+    } else if (debugPlanSync) console.log('[PlanSync] Reconcile no change')
+    // Always set classLevelOrder to the exact presentSequence (this preserves plan order precisely).
+    setClassLevelOrder(presentSequence)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [importedPlanSequence, suppressPlanReconcile])
   const allTags = useMemo(() => dedupe(EQUIPMENT.flatMap((i) => (((i as any).tags || []) as string[]))), [])
   const filteredEquipment = useMemo(() => {
     const q = catalogQuery.trim().toLowerCase()
@@ -985,6 +1066,7 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
     setTceMode,
     setTceAlloc,
     resetTceAllocForMode,
+  manualHitPoints,
   } = useRules()
 
   // If feats disabled globally, ensure none remain selected (auto-clean once)
@@ -998,6 +1080,18 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
       if (baseHuman) setRace(baseHuman)
     }
   }, [featsEnabled, race?.id])
+  // Track previous race to detect leaving variant human when feats are disabled
+  const prevRaceRef = useRef<string | undefined>(race?.id)
+  useEffect(() => {
+    const prev = prevRaceRef.current
+    if (prev === 'human-variant' && race?.id === 'human' && !featsEnabled) {
+      if (selectedFeats.length) {
+        setSelectedFeats([])
+        setFeatChoices({})
+      }
+    }
+    prevRaceRef.current = race?.id
+  }, [race?.id, featsEnabled, selectedFeats.length])
   // Expose minimal state globally for helper functions (e.g., finalAbility) without threading props
   useEffect(() => {
     ;(window as any).builderState = { selectedFeats, featChoices }
@@ -1045,6 +1139,33 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
   featChoices,
   }
   const derived = useMemo(() => computeDerived(state, { tceActive: tceCustomAsi, tceMode, tceAlloc }), [state, tceCustomAsi, tceMode, JSON.stringify(tceAlloc)])
+  // Manual HP lifted state
+  const [hpMethod, setHpMethod] = useState<'fixed' | 'rollEach' | 'maxFirstFixed' | 'maxEach' | 'manual'>('maxFirstFixed')
+  const [hpRolls, setHpRolls] = useState<Record<string, number[]>>({})
+  const [hpManualTotal, setHpManualTotal] = useState<number | ''>('')
+  const computedManualHp = useMemo(() => {
+    if (!manualHitPoints) return null
+    if (hpMethod === 'manual') return typeof hpManualTotal === 'number' ? hpManualTotal : 0
+    const CON_MOD = mod(abilities.con || 10)
+    let total = 0
+    classes.forEach(c => {
+      const hd = c.klass.hitDie
+      if (hpMethod === 'maxEach') {
+        total += (hd + CON_MOD) * c.level
+      } else if (hpMethod === 'maxFirstFixed') {
+        const extra = Math.max(0, c.level - 1)
+        const avg = Math.ceil((hd / 2) + 0.5)
+        total += hd + CON_MOD + extra * (avg + CON_MOD)
+      } else if (hpMethod === 'fixed') {
+        const avg = Math.ceil((hd / 2) + 0.5)
+        total += c.level * (avg + CON_MOD)
+      } else if (hpMethod === 'rollEach') {
+        const arr = hpRolls[c.klass.id] || []
+        total += Array.from({ length: c.level }, (_, i) => arr[i] ?? 0).reduce((s, v) => s + v + CON_MOD, 0)
+      }
+    })
+    return Math.max(1, total)
+  }, [manualHitPoints, hpMethod, JSON.stringify(hpRolls), hpManualTotal, abilities.con, classes])
   const issues = useMemo(() => validateChoice(state, { tceActive: tceCustomAsi, tceMode, tceAlloc, multiclassReqs }), [state, tceCustomAsi, multiclassReqs, tceMode, JSON.stringify(tceAlloc)])
   // Removed toy combat readiness computation
 
@@ -1090,46 +1211,48 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
     })
   }, [classFeatureChoices])
 
-  // Auto-apply background/race skill grants immediately, and remove stale grants when switching
+  // Auto-apply background/race granted skills. Excludes skillSources from deps to avoid feedback loop.
   useEffect(() => {
     const bgSkills = background?.skills ?? []
     const raceSkills = (race?.traits || []).flatMap((t) => RACE_TRAIT_SKILLS[t.id] || [])
     const desiredBg = new Set(bgSkills)
     const desiredRace = new Set(raceSkills)
-
-    // Additions needed (based on current sources)
-    const needsBg = bgSkills.filter((s) => !(skillSources[s] || []).includes('bg'))
-    const needsRace = raceSkills.filter((s) => !(skillSources[s] || []).includes('race'))
-
-    // Reconcile sources: remove stale 'bg' / 'race' entries not in desired sets; then add missing
-    let newSources: Record<string, string[]> = {}
-    setSkillSources((prev) => {
+    setSkillSources(prev => {
+      let changed = false
       const out: Record<string, string[]> = {}
-      // First, copy and filter existing sources
+      // Filter stale bg/race grants
       Object.entries(prev).forEach(([skill, sources]) => {
-        const filtered = sources.filter((src) => {
+        const filtered = sources.filter(src => {
           if (src === 'bg') return desiredBg.has(skill)
           if (src === 'race') return desiredRace.has(skill)
-          return true // keep all other sources (class picks, race-pick, etc.)
+          return true
         })
         if (filtered.length) out[skill] = filtered
+        if (filtered.length !== sources.length) changed = true
       })
-      // Then, add missing bg/race sources per desired sets
-      bgSkills.forEach((s) => { out[s] = Array.from(new Set([...(out[s] || []), 'bg'])) })
-      raceSkills.forEach((s) => { out[s] = Array.from(new Set([...(out[s] || []), 'race'])) })
-      newSources = out
+      // Add missing bg/race sources
+      bgSkills.forEach(s => {
+        const curr = out[s] || []
+        if (!curr.includes('bg')) { out[s] = [...curr, 'bg']; changed = true }
+      })
+      raceSkills.forEach(s => {
+        const curr = out[s] || []
+        if (!curr.includes('race')) { out[s] = [...curr, 'race']; changed = true }
+      })
+      if (!changed) return prev
       return out
     })
-
-    // Sync proficiency map to sources: add prof for any sourced skills; remove for unsourced
-    setSkillProf((prev) => {
-      const out: Record<string, ProfType> = {}
-      Object.keys(newSources).forEach((skill) => {
-        out[skill] = prev[skill] && prev[skill] !== 'none' ? prev[skill] : 'prof'
+    // Proficiency sync (only add; removal handled when sources drop)
+    setSkillProf(prev => {
+      const out: Record<string, ProfType> = { ...prev }
+      bgSkills.concat(raceSkills).forEach(skill => {
+        if (skillSourcesRef.current[skill]) {
+          out[skill] = prev[skill] && prev[skill] !== 'none' ? prev[skill] : 'prof'
+        }
       })
       return out
     })
-  }, [background, race, skillSources])
+  }, [background, race])
 
   // Feat: Prodigy integration into skillSources graph (acts like its own source)
   useEffect(() => {
@@ -1308,35 +1431,24 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
           if (Array.isArray(saved.catalogTags)) setCatalogTags(saved.catalogTags)
           if (typeof saved.catalogQuery === 'string') setCatalogQuery(saved.catalogQuery)
           if (typeof saved.catalogFiltersOpen === 'boolean') setCatalogFiltersOpen(saved.catalogFiltersOpen)
-          if (saved.spellFilters && typeof saved.spellFilters === 'object') {
-            setSpellFilters((prev) => ({
-              levels: saved.spellFilters.levels ?? prev.levels,
-              selectedOnly: saved.spellFilters.selectedOnly ?? prev.selectedOnly,
-              schools: Array.isArray(saved.spellFilters.schools) ? saved.spellFilters.schools : prev.schools,
-              damage: Array.isArray(saved.spellFilters.damage) ? saved.spellFilters.damage : prev.damage,
-              saves: Array.isArray(saved.spellFilters.saves) ? saved.spellFilters.saves : prev.saves,
-            }))
-          }
+          if (saved.spellFilters && typeof saved.spellFilters === 'object') setSpellFilters(saved.spellFilters)
+          restoredRef.current = true
         }
       }
     } catch {}
-    restoredRef.current = true
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
-
-  // Autosave whenever core state changes
+  
+  // Persist to localStorage (separate effect)
   useEffect(() => {
-    // Only save after initial restore to avoid overwriting before load
-    if (!restoredRef.current) return
     try {
       const payload = {
         mode,
         name,
         raceId: race?.id,
-        backgroundId: background?.id || null,
-        classes: classes.map((c) => ({ klassId: c.klass.id, level: c.level, subclassId: c.subclass?.id || null })),
+        backgroundId: background?.id,
+        classes: classes.map(c => ({ klassId: c.klass.id, level: c.level, subclassId: c.subclass?.id })),
         abilities,
-        loadoutIds: loadout.map((i: any) => i.id),
+        loadoutIds: loadout.map(i => i.id),
         // Skills
         skillProf,
         skillSources,
@@ -1351,18 +1463,18 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
         knownSpells,
         preparedSpells,
         // ASI/Feats
-  asiAlloc,
-  selectedFeats,
-  originAlloc,
-  featChoices,
-  // Rules
-  rules: { tceCustomAsi, multiclassReqs, tceMode, tceAlloc },
+        asiAlloc,
+        selectedFeats,
+        originAlloc,
+        featChoices,
+        // Rules (subset)
+        rules: { tceCustomAsi, multiclassReqs, tceMode, tceAlloc },
         // Minor UI prefs
         showCompleted,
         catalogQuery,
         catalogTags,
         catalogFiltersOpen,
-  spellFilters,
+        spellFilters,
         _ts: Date.now(),
       }
       localStorage.setItem(BUILDER_STORAGE_KEY, JSON.stringify(payload))
@@ -1387,17 +1499,16 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
     JSON.stringify(knownSpells),
     JSON.stringify(preparedSpells),
     JSON.stringify(asiAlloc),
-  JSON.stringify(selectedFeats),
-  JSON.stringify(originAlloc),
+    JSON.stringify(selectedFeats),
+    JSON.stringify(originAlloc),
     JSON.stringify(featChoices),
-  // removed legacy rules dependency
-  tceMode,
-  JSON.stringify(tceAlloc),
+    tceMode,
+    JSON.stringify(tceAlloc),
     showCompleted,
     catalogQuery,
     JSON.stringify(catalogTags),
     catalogFiltersOpen,
-  JSON.stringify(spellFilters),
+    JSON.stringify(spellFilters),
   ])
 
   // -------- Export / Import helpers --------
@@ -1619,7 +1730,8 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
 
     // Aggregate realized (non-future) levels into class counts
     const classCounts: Record<string, number> = {}
-    levelEntries.filter(lv => !lv.future).forEach((lv) => {
+  // Only treat entries explicitly flagged as present (future === false) as realized levels.
+  levelEntries.filter(lv => lv.future === false).forEach((lv) => {
       const nm = String(lv.className || '').trim()
       if (!nm) return
       classCounts[nm] = (classCounts[nm] || 0) + 1
@@ -1629,7 +1741,7 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
       const k = CLASSES.find((c) => c.name === nm)
       if (k) nextClasses.push({ klass: k, level: lvl })
     })
-    if (!nextClasses.length) nextClasses.push({ klass: CLASSES[0], level: 1 })
+  // Allow no classes if plan provided no realized levels
 
     // Collect feats only from realized levels
     const nextFeats: string[] = []
@@ -1695,7 +1807,9 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
       })
   })
 
-  return { nextRace, nextBg, nextClasses, nextFeats, nextCfc, nextClassSkillPicks, chronological }
+  const result = { nextRace, nextBg, nextClasses, nextFeats, nextCfc, nextClassSkillPicks, chronological }
+  if (debugPlanSync) console.log('[PlanSync] mapPlanToState result', { nextClasses: result.nextClasses.map(c=>({id:c.klass.id,l:c.level})), chronological: result.chronological.map(c=>({id:c.klass.id,f:c.future})) })
+  return result
   }
 
   function summarizeClassCounts(list: Array<{ klass: Klass; level: number }>) {
@@ -1731,10 +1845,12 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
   }
 
   function applyMapping(mapping: any) {
+    if (debugPlanSync) console.log('[PlanSync] applyMapping start', { before: classes.map(c=>({id:c.klass.id,l:c.level})), next: (mapping.nextClasses||[]).map((c:any)=>({id:c.klass.id,l:c.level})) })
     snapshot()
     setRace(mapping.nextRace)
     setBackground(mapping.nextBg)
     setClasses(mapping.nextClasses)
+    if (debugPlanSync) console.log('[PlanSync] applyMapping scheduled setClasses')
     setSelectedFeats(mapping.nextFeats)
     if (mapping.nextCfc && Object.keys(mapping.nextCfc).length) setClassFeatureChoices(mapping.nextCfc)
     if (mapping.nextClassSkillPicks && Object.keys(mapping.nextClassSkillPicks).length) {
@@ -1762,13 +1878,17 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
           return
         }
         setPendingPassivePlan({ plan, diff, mapping, ts })
+        setSuppressPlanReconcile(false) // new incoming plan -> enable reconciliation again until user applies
         setImportedPlanSequence(mapping.chronological || [])
+        if (debugPlanSync) console.log('[PlanSync] passive plan received', { diff, chronological: mapping.chronological.map((c:any)=>({id:c.klass.id,f:c.future})) })
         return
       }
       // Explicit apply (from Planner Apply button): apply immediately
       setLastImportTsHandled(ts)
       applyMapping(mapping)
       setImportedPlanSequence(mapping.chronological || [])
+      setSuppressPlanReconcile(true) // freeze post-apply to prevent overwrite
+      if (debugPlanSync) console.log('[PlanSync] explicit apply plan', { chronological: mapping.chronological.map((c:any)=>({id:c.klass.id,f:c.future})) })
     } catch {
       // ignore
     }
@@ -1800,14 +1920,9 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
     <div style={{ display: 'grid', gap: 16 }}>
       {/* Top controls similar to demo header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0' }}>
-        <Sparkles size={18} />
-        <div style={{ fontWeight: 600 }}>Character Builder</div>
+        {/* Removed icon and header text per request */}
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: '#64748b' }}>
-          <span>Guided</span>
-          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-            <input type="checkbox" checked={mode === 'power'} onChange={(e) => setMode(e.target.checked ? 'power' : 'guided')} />
-            <span>Power</span>
-          </label>
+          {/* Removed Guided/Power toggle per request */}
           <Button size="sm" variant="outline" onClick={undo}><Undo2 size={16} style={{ marginRight: 6 }} />Undo</Button>
           <Button size="sm" variant="outline" onClick={redo}><Redo2 size={16} style={{ marginRight: 6 }} />Redo</Button>
       <Button
@@ -1817,11 +1932,26 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
               const ok = window.confirm('Reset character to defaults? This clears saved Builder data.')
               if (!ok) return
               try { localStorage.removeItem(BUILDER_STORAGE_KEY) } catch {}
+              // Also clear any saved Progression Planner data to prevent auto re-import after reset
+              try {
+                const del: string[] = []
+                for (let i = 0; i < localStorage.length; i++) {
+                  const k = localStorage.key(i) || ''
+                  if (k.startsWith('progressionPlanner.v1:') || k.startsWith('progressionPlanner.activeRoot.v1:')) del.push(k)
+                }
+                del.forEach(k => localStorage.removeItem(k))
+              } catch {}
               // Reset core state to defaults
               setMode('power')
               setName('New Hero')
               setRace(RACES[0])
-              setClasses([{ klass: CLASSES[0], level: 1 }])
+              setClasses([])
+              // Reset chronological level history and any imported plan so progression table reflects fresh state
+              setClassLevelOrder([])
+              setImportedPlanSequence([])
+              setPendingPassivePlan(null)
+              setLastImportTsHandled(null)
+              setShowFullProgression(false)
               setAbilities({ str: 15, dex: 14, con: 14, int: 10, wis: 10, cha: 8 })
               setLoadout([EQUIPMENT[0], EQUIPMENT[1]])
               setBackground(BACKGROUNDS[0])
@@ -1923,13 +2053,39 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
                     asi={asiAlloc}
                   />
                 </div>
-
-                <AbilityEditor abilities={abilities} onChange={setAbilities} race={race} asi={asiAlloc} tceActive={tceCustomAsi} tceMode={tceMode} tceAlloc={tceAlloc} />
+                {/* AbilityEditor moved to its own dedicated card below Basics */}
 
                 {/* TCE controls moved back to global Rules Drawer */}
               </div>
             </CardContent>
           </Card>
+
+          {/* Ability Scores (separated from Basics) */}
+          <Card>
+            <CardHeader><CardTitle><Scale size={16} style={{ marginRight: 6 }} />Ability Scores</CardTitle></CardHeader>
+            <CardContent>
+              <AbilityEditor abilities={abilities} onChange={setAbilities} race={race} asi={asiAlloc} tceActive={tceCustomAsi} tceMode={tceMode} tceAlloc={tceAlloc} saves={derived.saves} saveProfs={derived.saveProfs} primaryClassId={classes[0]?.klass.id} primaryClassName={classes[0]?.klass.name} />
+            </CardContent>
+          </Card>
+
+          {/* Manual Hit Points Section */}
+          {manualHitPoints && (
+            <Card>
+              <CardHeader><CardTitle><HeartIcon size={16} style={{ marginRight: 6 }} />Hit Points</CardTitle></CardHeader>
+              <CardContent>
+                <HPManager
+                  classes={classes}
+                  abils={abilities}
+                  method={hpMethod}
+                  onMethodChange={setHpMethod}
+                  rolls={hpRolls}
+                  setRolls={setHpRolls}
+                  manualTotal={hpManualTotal}
+                  setManualTotal={setHpManualTotal}
+                />
+              </CardContent>
+            </Card>
+          )}
 
           {/* Combined Progression (Multiclass) */}
           {classes.length > 0 && (
@@ -2169,7 +2325,7 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
                 : fa.int
               return { mod: mod(ab), score: ab }
             }
-            const pb = proficiencyBonus(derived.totalLevel)
+            const pb = proficiencyBonus(Math.max(1, derived.totalLevel))
             // Demo limits and unlock thresholds (simplified):
             // Known casters get known L1/L2/L3 counts at or after unlock levels.
             // Prepared casters have prepared limits per level = max(1, casting mod + class level) at or after unlock.
@@ -2550,7 +2706,7 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
 
                   {(() => {
                     const fa = finalAbility(abilities, race, asiAlloc, { tceActive: tceCustomAsi, tceMode, tceAlloc, customOrigin, originAlloc })
-                    const pb = proficiencyBonus(derived.totalLevel)
+                    const pb = proficiencyBonus(Math.max(1, derived.totalLevel))
                     // Ability sort order preference (CHA, CON, DEX, INT, STR, WIS)
                     const abilityOrder: AbilityKey[] = ['cha', 'con', 'dex', 'int', 'str', 'wis']
                     const profOrder: ProfType[] = ['expert', 'prof', 'half', 'none']
@@ -2846,50 +3002,72 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
     {/* Right: Live Summary */}
   <aside className="no-scrollbar" style={{ display: 'grid', gap: 12, position: 'sticky', top: 76, flex: '0 0 420px', width: 420, minWidth: 420, boxSizing: 'border-box', maxHeight: 'calc(100vh - 100px)', overflowY: 'auto', paddingRight: 4 }}>
           <Card>
-            <CardHeader><CardTitle><Scale size={16} style={{ marginRight: 6 }} />Live Summary</CardTitle></CardHeader>
+            <CardHeader>
+              <div style={{ width: '100%', textAlign: 'center', display: 'grid', gap: 4 }}>
+                <div style={{ fontSize: 20, fontWeight: 700, letterSpacing: '.5px' }}>{name && name.trim() ? name : 'Unnamed Character'}</div>
+                <div style={{ fontSize: 11, color: '#64748b', lineHeight: 1 }}>
+                  {race.name}{background ? ` • ${background.name}` : ''}
+                </div>
+                {/* Live Summary label removed per request */}
+              </div>
+            </CardHeader>
             <CardContent>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <Labeled label="Race"><div>{race.name}</div></Labeled>
-                <Labeled label="Level"><Pill>{derived.totalLevel}</Pill></Labeled>
-                <Labeled label="Classes">
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                    {classes.map((c) => (
-                      <Pill key={c.klass.id}>
+              {/* Top Priority Summary */}
+              <div style={{ display: 'grid', gap: 12 }}>
+                {/* Level + Class breakdown */}
+                <div style={{ textAlign: 'center', fontSize: 18, fontWeight: 600, lineHeight: 1.2 }}>
+                  {derived.totalLevel > 0 ? `Level ${derived.totalLevel}` : 'No Class Selected'}
+                  <div style={{ marginTop: 4, fontSize: 14, fontWeight: 500, color: 'var(--foreground-muted,#334155)', display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 6 }}>
+                    {classes.length ? classes.map(c => (
+                      <span key={c.klass.id} style={{ background: 'var(--pill-bg,#f1f5f9)', padding: '2px 8px', borderRadius: 999, fontSize: 12, fontWeight: 600 }}>
                         {c.klass.name} {c.level}{c.subclass ? ` (${c.subclass.name})` : ''}
-                      </Pill>
-                    ))}
+                      </span>
+                    )) : <span style={{ fontSize: 12, color: '#94a3b8' }}>Add a class to begin</span>}
                   </div>
-                </Labeled>
-                <Labeled label="Speed"><Pill>{derived.speed} ft.</Pill></Labeled>
-                <Labeled label="HP @lvl"><Pill>{derived.hp}</Pill></Labeled>
-                <Labeled label="AC"><Pill>{derived.ac}</Pill></Labeled>
-                <Labeled label="Initiative"><Pill>{derived.initiative >= 0 ? `+${derived.initiative}` : derived.initiative}</Pill></Labeled>
-                {derived.barbarianLevel ? (
-                  <Labeled label="Rage">
-                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-                      <Pill>{derived.rageUses === 'unlimited' ? '∞ uses' : `${derived.rageUses} uses`}</Pill>
-                      <Pill style={{ background: '#fee2e2', color: '#991b1b' }}>+{derived.rageDamageBonus} dmg</Pill>
+                </div>
+
+                {/* Key combat stats */}
+                <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 20 }}>
+                  <StatBadge label="HP" value={manualHitPoints && computedManualHp != null ? computedManualHp : derived.hp} />
+                  <StatBadge label="AC" value={derived.ac} />
+                  <StatBadge label="Init" value={derived.initiative >= 0 ? `+${derived.initiative}` : derived.initiative} />
+                  <StatBadge label="Speed" value={`${derived.speed} ft`} />
+                  {derived.barbarianLevel ? (
+                    <div style={{ display: 'grid', placeItems: 'center', padding: '6px 10px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 10, minWidth: 72 }}>
+                      <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: '.5px', color: '#b91c1c' }}>RAGE</div>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: '#b91c1c' }}>{derived.rageUses === 'unlimited' ? '∞' : derived.rageUses}</div>
+                      <div style={{ fontSize: 10, color: '#b91c1c' }}>+{derived.rageDamageBonus} dmg</div>
                     </div>
-                  </Labeled>
-                ) : null}
-                <Labeled label="Background"><div>{background?.name || '—'}</div></Labeled>
+                  ) : null}
+                </div>
+
+                {/* (Race & Background moved under name in header) */}
               </div>
 
-              {/* Combined Abilities + Saves */}
-              <div style={{ display: 'grid', gap: 8, marginTop: 12 }}>
-                <div style={{ fontSize: 12, color: '#64748b' }}>Abilities & Saves</div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
-          {(['str','dex','con','int','wis','cha'] as AbilityKey[]).map((k) => (
-                    <div key={k} style={{ padding: 8, borderRadius: 12, border: '1px solid var(--muted-border)', background: 'var(--card-bg)', display: 'grid', gap: 6 }}>
-                      <div style={{ fontSize: 10, textTransform: 'uppercase', color: '#64748b' }}>{k}</div>
-                      <div style={{ fontWeight: 600 }}>{finalAbility(abilities, race, asiAlloc, { tceActive: tceCustomAsi, tceMode, tceAlloc, customOrigin, originAlloc })[k]}</div>
-            <div style={{ fontSize: 12, color: '#64748b' }}>mod {mod(finalAbility(abilities, race, asiAlloc, { tceActive: tceCustomAsi, tceMode, tceAlloc, customOrigin, originAlloc })[k]) >= 0 ? '+' : ''}{mod(finalAbility(abilities, race, asiAlloc, { tceActive: tceCustomAsi, tceMode, tceAlloc, customOrigin, originAlloc })[k])}</div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <span style={{ fontSize: 11, color: '#64748b' }}>Save</span>
-                        <Pill>{derived.saves[k] >= 0 ? `+${derived.saves[k]}` : derived.saves[k]}</Pill>
+              {/* Abilities (compact mirror of editor) */}
+              <div style={{ display: 'grid', gap: 10, marginTop: 16 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 92px)', gap: 8, justifyContent: 'center' }}>
+                  {(['str','dex','con','int','wis','cha'] as AbilityKey[]).map(k => {
+                    const val = finalAbility(abilities, race, asiAlloc, { tceActive: tceCustomAsi, tceMode, tceAlloc, customOrigin, originAlloc })[k]
+                    const m = mod(val)
+                    const save = derived.saves[k]
+                    return (
+                      <div key={k} style={{ width: 92, padding: 12, borderRadius: 10, border: '1px solid var(--muted-border)', background: 'var(--card-bg)', display: 'grid', gap: 6, alignContent: 'start', textAlign: 'center' }}>
+                        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.5px', textTransform: 'uppercase' }}>{k}</div>
+                        <div style={{ fontSize: 22, fontWeight: 400, lineHeight: 1 }}>{val}</div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 2, gap: 8 }}>
+                          <div style={{ display: 'grid', gap: 2, flex: 1, textAlign: 'center' }}>
+                            <span style={{ fontSize: 9, letterSpacing: '.5px', textTransform: 'uppercase', color: '#64748b' }}>Mod</span>
+                            <span style={{ fontSize: 13, fontWeight: 600, color: '#334155' }}>{m >= 0 ? `+${m}` : m}</span>
+                          </div>
+                          <div style={{ display: 'grid', gap: 2, flex: 1, textAlign: 'center' }}>
+                            <span style={{ fontSize: 9, letterSpacing: '.5px', textTransform: 'uppercase', color: '#64748b' }}>Save</span>
+                            <span style={{ fontSize: 13, fontWeight: 600 }}>{save >= 0 ? `+${save}` : save}</span>
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
               </div>
 
@@ -3078,7 +3256,7 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
             </ul>
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
               <Button size="sm" variant="outline" onClick={() => { setPendingPassivePlan(null) }}>Not now</Button>
-              <Button size="sm" onClick={() => { if (pendingPassivePlan) { applyMapping(pendingPassivePlan.mapping); setPendingPassivePlan(null) } }}>Apply changes</Button>
+              <Button size="sm" onClick={() => { if (pendingPassivePlan) { if (debugPlanSync) console.log('[PlanSync] Apply button click', pendingPassivePlan.mapping.nextClasses.map((c:any)=>({id:c.klass.id,l:c.level}))); applyMapping(pendingPassivePlan.mapping); setImportedPlanSequence(pendingPassivePlan.mapping.chronological || []); setSuppressPlanReconcile(true); setPendingPassivePlan(null) } }}>Apply changes</Button>
             </div>
           </div>
         </div>
@@ -3101,9 +3279,21 @@ function Selector<T extends { id: string }>(props: { options: T[]; value: T; onC
   )
 }
 
-function AbilityEditor(props: { abilities: Record<AbilityKey, number>; onChange: (v: Record<AbilityKey, number>) => void; race: Race; asi?: Record<AbilityKey, number>; tceActive?: boolean; tceMode?: '2+1' | '1+1+1'; tceAlloc?: Record<AbilityKey, number> }) {
+function AbilityEditor(props: { abilities: Record<AbilityKey, number>; onChange: (v: Record<AbilityKey, number>) => void; race: Race; asi?: Record<AbilityKey, number>; tceActive?: boolean; tceMode?: '2+1' | '1+1+1'; tceAlloc?: Record<AbilityKey, number>; saves?: Record<AbilityKey, number>; saveProfs?: AbilityKey[]; primaryClassId?: string; primaryClassName?: string }) {
+  // Access rule for manual adjustments
+  const { manualAbilityAdjust } = useRules()
   const final = finalAbility(props.abilities, props.race, props.asi, { tceActive: props.tceActive, tceMode: props.tceMode, tceAlloc: props.tceAlloc })
   const order: AbilityKey[] = ['str', 'dex', 'con', 'int', 'wis', 'cha']
+  // Inject keyframes for flashing hint once
+  useEffect(() => {
+    if (typeof document === 'undefined') return
+    if (!document.getElementById('ability-drop-pulse-style')) {
+      const el = document.createElement('style')
+      el.id = 'ability-drop-pulse-style'
+      el.textContent = `@keyframes abilityDropPulse { 0%{opacity:.25} 50%{opacity:1} 100%{opacity:.25} }`
+      document.head.appendChild(el)
+    }
+  }, [])
 
   // Roll pool + DnD state
   type RollToken = { id: string; value: number }
@@ -3112,8 +3302,11 @@ function AbilityEditor(props: { abilities: Record<AbilityKey, number>; onChange:
   const makeId = () => Math.random().toString(36).slice(2, 9)
   // Point Buy state
   const [pointBuy, setPointBuy] = useState(false)
+  const canManualAdjust = manualAbilityAdjust || pointBuy
   // NEW: toggle for generator options
   const [genOpen, setGenOpen] = useState(false)
+  // Global toggle: when true, show breakdown for all abilities
+  const [breakdownAllOpen, setBreakdownAllOpen] = useState(false)
   const POINT_BUY_BUDGET = 27
   function pointCost(score: number) {
     switch (score) {
@@ -3148,18 +3341,22 @@ function AbilityEditor(props: { abilities: Record<AbilityKey, number>; onChange:
     setRollTokens(toTokens(vals))
     setAssignedFromPool({})
     setPointBuy(false)
+  // Reset current ability scores so previous partial assignments don't persist
+  props.onChange({ str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 })
   }
   function roll3d6Pool() {
     const vals = Array.from({ length: 6 }, () => gen3d6Once())
     setRollTokens(toTokens(vals))
     setAssignedFromPool({})
     setPointBuy(false)
+  props.onChange({ str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 })
   }
   function roll1d20Pool() {
     const vals = Array.from({ length: 6 }, () => 1 + Math.floor(Math.random() * 20))
     setRollTokens(toTokens(vals))
     setAssignedFromPool({})
     setPointBuy(false)
+  props.onChange({ str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 })
   }
   function applyScores(scores: number[]) {
     const sorted = [...scores].sort((a, b) => b - a)
@@ -3171,6 +3368,30 @@ function AbilityEditor(props: { abilities: Record<AbilityKey, number>; onChange:
   function autoAssignFromPool() {
     if (!rollTokens.length) return
     applyScores(rollTokens.map(t => t.value))
+    setRollTokens([])
+    setAssignedFromPool({})
+  }
+  function quickAssignByClass() {
+    if (!rollTokens.length) return
+    const CLASS_PRIORITIES: Record<string, AbilityKey[]> = {
+      barbarian: ['str','con','dex','wis','cha','int'],
+      fighter: ['str','con','dex','wis','cha','int'],
+      rogue: ['dex','con','wis','int','cha','str'],
+      wizard: ['int','con','dex','wis','cha','str'],
+      cleric: ['wis','con','str','dex','cha','int'],
+      druid: ['wis','con','dex','int','cha','str'],
+      paladin: ['cha','str','con','wis','dex','int'],
+      ranger: ['dex','wis','con','str','int','cha'],
+      sorcerer: ['cha','con','dex','wis','int','str'],
+      warlock: ['cha','con','dex','wis','int','str'],
+      monk: ['dex','wis','con','str','int','cha'],
+      bard: ['cha','dex','con','wis','int','str'],
+    }
+    const pri = (props.primaryClassId && CLASS_PRIORITIES[props.primaryClassId]) || order
+    const sortedValues = [...rollTokens.map(t => t.value)].sort((a,b)=>b-a)
+    const next: Record<AbilityKey, number> = { ...props.abilities }
+    pri.forEach((ab,i)=> { if (sortedValues[i] != null) next[ab] = clamp(sortedValues[i],3,20) })
+    props.onChange(next)
     setRollTokens([])
     setAssignedFromPool({})
   }
@@ -3203,6 +3424,7 @@ function AbilityEditor(props: { abilities: Record<AbilityKey, number>; onChange:
   }
 
   function adjustAbility(k: AbilityKey, delta: number) {
+  if (!pointBuy && !manualAbilityAdjust) return // guard when manual adjustments disabled
     if (!pointBuy) {
       props.onChange({ ...props.abilities, [k]: clamp((props.abilities[k] || 10) + delta, 3, 20) })
       return
@@ -3216,15 +3438,41 @@ function AbilityEditor(props: { abilities: Record<AbilityKey, number>; onChange:
     }
   }
 
+  function getAbilityBreakdown(k: AbilityKey) {
+    const lines: Array<{ label: string; value: number; detail?: string }> = []
+    // Base (raw) value
+    const base = pointBuy ? Math.max(8, Math.min(15, props.abilities[k] || 8)) : (props.abilities[k] || 10)
+    lines.push({ label: 'Base', value: base })
+    // Race / TCE allocation
+    if (props.tceActive) {
+      const alloc = props.tceAlloc?.[k] || 0
+      if (alloc) lines.push({ label: 'TCE Allocation', value: alloc })
+    } else {
+      const inc = (props.race?.asis as any)?.[k] || 0
+      if (inc) lines.push({ label: props.race?.name ? `Race (${props.race.name})` : 'Race', value: inc })
+    }
+    // ASI improvements (cumulative)
+    const asiInc = props.asi?.[k] || 0
+    if (asiInc) lines.push({ label: 'ASI Improvements', value: asiInc })
+    // Feat: Resilient (+1 chosen ability)
+    try {
+      const bs = (window as any).builderState
+      if (bs?.selectedFeats?.includes('resilient') && bs?.featChoices?.resilientAbility === k) {
+        lines.push({ label: 'Feat (Resilient)', value: 1 })
+      }
+    } catch {}
+    const total = lines.reduce((s, l) => s + l.value, 0)
+    return { lines, total }
+  }
+
   return (
     <div style={{ gridColumn: '1 / -1', display: 'grid', gap: 8 }}>
       <div style={{ fontSize: 12, color: '#64748b' }}>Abilities</div>
 
       {/* Generators */}
       <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
-        <Button size="sm" variant="outline" onClick={() => setGenOpen((v) => !v)}>Generate</Button>
-        <Button size="sm" variant="ghost" onClick={() => { props.onChange({ str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 }); clearRolls(); setPointBuy(false) }}>Reset</Button>
-        {genOpen ? (
+        <Button size="sm" variant="outline" onClick={() => setGenOpen((v) => !v)}>{genOpen ? 'Close' : 'Generate'}</Button>
+        {genOpen && (
           <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
             <Button size="sm" variant="outline" onClick={roll4d6dlPool}>🎲 4d6 (drop lowest)</Button>
             <Button size="sm" variant="outline" onClick={roll3d6Pool}>🎲 3d6</Button>
@@ -3239,51 +3487,103 @@ function AbilityEditor(props: { abilities: Record<AbilityKey, number>; onChange:
               </>
             )}
             {rollTokens.length ? (
-              <>
-                <Button size="sm" variant="outline" onClick={autoAssignFromPool}>Auto-assign high→low</Button>
-                <Button size="sm" variant="ghost" onClick={clearRolls}>Clear Rolls</Button>
-              </>
+              <Button size="sm" variant="ghost" onClick={clearRolls}>Clear Rolls</Button>
             ) : null}
           </div>
-        ) : null}
+        )}
+        <Button size="sm" variant="ghost" style={{ marginLeft: 'auto' }} onClick={() => { props.onChange({ str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 }); clearRolls(); setPointBuy(false) }}>Reset</Button>
       </div>
 
   {/* Roll pool as draggable tokens (only for dice methods) */}
       {rollTokens.length ? (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center' }}>
-          {rollTokens.map((t) => (
-            <div
-              key={t.id}
-              draggable
-              onDragStart={(e) => onTokenDragStart(e, t.id)}
-              title={`Drag ${t.value} onto a stat`}
-              style={{ width: 36, height: 36, borderRadius: 8, border: '1px solid #ef4444', background: '#ef4444', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 600 }}
-            >
-              {t.value}
-            </div>
-          ))}
+        <div style={{ display: 'grid', gap: 8, justifyItems: 'center' }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center' }}>
+            {rollTokens.map((t) => (
+              <div
+                key={t.id}
+                draggable
+                onDragStart={(e) => onTokenDragStart(e, t.id)}
+                title={`Drag ${t.value} onto a stat`}
+                style={{ width: 36, height: 36, borderRadius: 8, border: '1px solid #ef4444', background: '#ef4444', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 600 }}
+              >
+                {t.value}
+              </div>
+            ))}
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center' }}>
+            <Button size="sm" variant="outline" onClick={autoAssignFromPool}>Auto-assign high→low</Button>
+            {props.primaryClassId && (
+              <Button size="sm" variant="outline" onClick={quickAssignByClass}>Quick Assign {props.primaryClassName ? `(${props.primaryClassName})` : ''}</Button>
+            )}
+          </div>
         </div>
       ) : null}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 8 }}>
+  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 8 }}>
         {order.map((k) => (
           <div
             key={k}
             onDragOver={onAbilityDragOver}
             onDrop={(e) => onAbilityDrop(k, e)}
-            style={{ padding: 8, borderRadius: 12, border: '1px solid var(--muted-border)', background: 'var(--card-bg)', display: 'grid', gap: 6 }}
+    style={{ padding: 8, borderRadius: 12, border: '1px solid var(--muted-border)', background: 'var(--card-bg)', display: 'grid', gap: 6, textAlign: 'center', justifyItems: 'center', alignItems: 'center' }}
           >
-            <div style={{ fontSize: 10, textTransform: 'uppercase', color: '#64748b' }}>{k}</div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Button size="icon" variant="outline" onClick={() => adjustAbility(k, -1)}>−</Button>
-              <div style={{ fontWeight: 600, width: 24, textAlign: 'center' }}>{pointBuy ? Math.max(8, Math.min(15, props.abilities[k] || 8)) : (props.abilities[k] || 10)}</div>
-              <Button size="icon" variant="outline" onClick={() => adjustAbility(k, +1)}>+</Button>
+            <div style={{ fontSize: 12, textTransform: 'uppercase', color: 'var(--fg)', fontWeight: 700, letterSpacing: '.5px', display: 'flex', alignItems: 'center', gap: 4 }}>
+              <span>{k.toUpperCase()}</span>
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); setBreakdownAllOpen(o => !o) }}
+                style={{
+                  border: 'none', background: 'transparent', padding: 0, cursor: 'pointer', display: 'flex', alignItems: 'center',
+                  color: breakdownAllOpen ? '#0ea5e9' : '#64748b'
+                }}
+                aria-label={breakdownAllOpen ? 'Hide ability breakdowns' : 'Show ability breakdowns'}
+                title={breakdownAllOpen ? 'Hide ability breakdowns' : 'Show ability breakdowns'}
+              >
+                <Info size={14} />
+              </button>
             </div>
-            <div style={{ fontSize: 12, color: '#64748b' }}>mod {mod(final[k]) >= 0 ? '+' : ''}{mod(final[k])}</div>
+            {breakdownAllOpen && (() => { const bd = getAbilityBreakdown(k); return (
+              <div style={{ fontSize: 10, lineHeight: 1.3, background: 'var(--pill-bg, #f1f5f9)', border: '1px solid var(--muted-border)', padding: 6, borderRadius: 6, width: '100%', textAlign: 'left' }}>
+                {bd.lines.length <= 1 ? <div style={{ color: '#64748b' }}>No modifiers</div> : bd.lines.map((l, i) => (
+                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                    <span>{l.label}</span>
+                    <span style={{ fontWeight: 500 }}>{l.value >= 0 ? '+' : ''}{l.value}</span>
+                  </div>
+                ))}
+                {bd.lines.length > 1 && (
+                  <div style={{ marginTop: 4, borderTop: '1px solid #e2e8f0', paddingTop: 4, display: 'flex', justifyContent: 'space-between' }}>
+                    <strong>Total</strong>
+                    <strong>{bd.total}</strong>
+                  </div>
+                )}
+              </div>
+            ) })()}
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+              <Button size="icon" variant="outline" disabled={!canManualAdjust} onClick={() => adjustAbility(k, -1)}>−</Button>
+              {(() => { const base = pointBuy ? Math.max(8, Math.min(15, props.abilities[k] || 8)) : (props.abilities[k] || 10); const eff = final[k]; return (
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: 32, lineHeight: 1 }}>
+                  <div style={{ fontWeight: 600 }}>{eff}</div>
+                  {eff !== base && <div style={{ fontSize: 10, color: '#64748b' }}>({base})</div>}
+                </div>
+              ) })()}
+              <Button size="icon" variant="outline" disabled={!canManualAdjust} onClick={() => adjustAbility(k, +1)}>+</Button>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4, width: '100%' }}>
+              <div style={{ background: 'var(--pill-bg, #f1f5f9)', padding: '4px 6px', borderRadius: 6, fontSize: 11, display: 'grid', gap: 2 }}>
+                <span style={{ fontSize: 9, letterSpacing: '.5px', textTransform: 'uppercase', color: '#64748b' }}>Mod</span>
+                <span style={{ fontSize: 12, fontWeight: 400 }}>{mod(final[k]) >= 0 ? '+' : ''}{mod(final[k])}</span>
+              </div>
+              {(() => { const sv = props.saves?.[k]; const prof = props.saveProfs?.includes(k); const val = typeof sv === 'number' ? (sv >= 0 ? '+' : '') + sv : (mod(final[k]) >= 0 ? '+' : '') + mod(final[k]); return (
+                <div style={{ background: prof ? '#e0f2fe' : 'var(--pill-bg, #f1f5f9)', padding: '4px 6px', borderRadius: 6, fontSize: 11, display: 'grid', gap: 2, border: prof ? '1px solid #38bdf8' : '1px solid transparent' }}>
+                  <span style={{ fontSize: 9, letterSpacing: '.5px', textTransform: 'uppercase', color: prof ? '#0369a1' : '#64748b' }}>Save</span>
+                  <span style={{ fontSize: 12, fontWeight: 400, color: prof ? '#0ea5e9' : 'inherit' }}>{val}</span>
+                </div>
+              ) })()}
+            </div>
             {typeof assignedFromPool[k] === 'number' ? (
               <div style={{ fontSize: 11, color: '#64748b' }}>Assigned: {assignedFromPool[k]}</div>
             ) : (
-              rollTokens.length ? <div style={{ fontSize: 11, color: '#94a3b8' }}>Drop a roll here</div> : null
+              rollTokens.length ? <div style={{ fontSize: 11, color: '#94a3b8', animation: 'abilityDropPulse 2.2s ease-in-out infinite' }}>Drop a roll here</div> : null
             )}
           </div>
         ))}
@@ -3389,6 +3689,7 @@ function LoadoutRow({ item, onRemove }: { item: Equipment; onRemove: () => void 
 
 function ClassManager(props: { classes: Array<{ klass: Klass; level: number; subclass?: Subclass }>; onChange: (v: Array<{ klass: Klass; level: number; subclass?: Subclass }>, levelAppend?: string[]) => void; abilities?: Record<AbilityKey, number>; race?: Race; asi?: Record<AbilityKey, number> }) {
   const [addOpen, setAddOpen] = useState(false)
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({})
   const addRef = useRef<HTMLDivElement | null>(null)
   const totalLevel = props.classes.reduce((s: number, c: { klass: Klass; level: number; subclass?: Subclass }) => s + c.level, 0)
   const maxTotal = 20
@@ -3465,7 +3766,7 @@ function ClassManager(props: { classes: Array<{ klass: Klass; level: number; sub
   }
   function removeAt(idx: number) {
     const out = props.classes.filter((_, i) => i !== idx)
-    props.onChange(out.length ? out : [{ klass: CLASSES[0], level: 1 }])
+    props.onChange(out)
   }
   function addClass(k: Klass) {
     if (props.classes.some((c) => c.klass.id === k.id)) return
@@ -3526,7 +3827,14 @@ function ClassManager(props: { classes: Array<{ klass: Klass; level: number; sub
           <div key={c.klass.id} style={{ padding: 8, borderRadius: 12, border: '1px solid var(--muted-border)', background: 'var(--card-bg)', display: 'grid', gap: 6 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <div style={{ fontWeight: 600 }}>{c.klass.name}</div>
+                <button
+                  onClick={() => setExpanded(e => ({ ...e, [c.klass.id]: !e[c.klass.id] }))}
+                  style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'transparent', border: 'none', cursor: 'pointer', fontWeight: 600, padding: 0 }}
+                  aria-label={expanded[c.klass.id] ? `Collapse ${c.klass.name} features` : `Expand ${c.klass.name} features`}
+                >
+                  {expanded[c.klass.id] ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                  <span>{c.klass.name}</span>
+                </button>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                   <Button size="icon" variant="outline" onClick={() => setLevelAt(idx, c.level - 1)}>−</Button>
                   <Pill>{c.level}</Pill>
@@ -3557,6 +3865,26 @@ function ClassManager(props: { classes: Array<{ klass: Klass; level: number; sub
                 )}
               </div>
             ) : null}
+            {expanded[c.klass.id] && (() => {
+              const feats: Array<{ name: string; text: string }> = []
+              for (let lvl = 1; lvl <= c.level; lvl++) {
+                const arr = c.klass.featuresByLevel?.[lvl]
+                if (arr) arr.forEach(f => feats.push({ ...f, level: lvl } as any))
+              }
+              return (
+                <div style={{ display: 'grid', gap: 6, marginTop: 4 }}>
+                  {feats.length ? feats.map((f, i) => (
+                    <div key={i} style={{ padding: 6, borderRadius: 8, border: '1px solid var(--muted-border)', background: 'var(--pill-bg, #f1f5f9)' }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                        <span>{f.name}</span>
+                        {'level' in f && (f as any).level ? <span style={{ fontSize: 10, color: '#64748b' }}>L{(f as any).level}</span> : null}
+                      </div>
+                      <div style={{ fontSize: 11, color: '#475569', lineHeight: 1.3 }}>{f.text}</div>
+                    </div>
+                  )) : <div style={{ fontSize: 11, color: '#64748b' }}>No features for current level.</div>}
+                </div>
+              )
+            })()}
           </div>
         ))}
 
@@ -3567,6 +3895,102 @@ function ClassManager(props: { classes: Array<{ klass: Klass; level: number; sub
           </div>
         )}
       </div>
+    </div>
+  )
+}
+
+// Hit Point Manager
+function HPManager({ classes, abils, method, onMethodChange, rolls, setRolls, manualTotal, setManualTotal }: {
+  classes: Array<{ klass: Klass; level: number; subclass?: Subclass }>
+  abils: Record<AbilityKey, number>
+  method: 'fixed' | 'rollEach' | 'maxFirstFixed' | 'maxEach' | 'manual'
+  onMethodChange: (m: 'fixed' | 'rollEach' | 'maxFirstFixed' | 'maxEach' | 'manual') => void
+  rolls: Record<string, number[]>
+  setRolls: React.Dispatch<React.SetStateAction<Record<string, number[]>>>
+  manualTotal: number | ''
+  setManualTotal: React.Dispatch<React.SetStateAction<number | ''>>
+}) {
+  const conScore = abils.con || 10
+  const CON_MOD = mod(conScore)
+
+  function hitDieFor(classId: string): number {
+    const k = CLASSES.find(c => c.id === classId)
+    return k?.hitDie || 8
+  }
+  function averageDie(d: number) { return Math.ceil((d / 2) + 0.5) } // 5e fixed avg rule
+
+  function rollDie(d: number) { return 1 + Math.floor(Math.random() * d) }
+
+  function rollLevels(classId: string, count: number) {
+    setRolls(r => ({ ...r, [classId]: Array.from({ length: count }, (_, i) => r[classId]?.[i] || rollDie(hitDieFor(classId))) }))
+  }
+
+  // compute total HP
+  let total = 0
+  if (method === 'manual') {
+    total = typeof manualTotal === 'number' ? manualTotal : 0
+  } else {
+    classes.forEach(c => {
+      const hd = hitDieFor(c.klass.id)
+      if (method === 'maxEach') {
+        total += (hd + CON_MOD) * c.level
+      } else if (method === 'maxFirstFixed') {
+        const extraLevels = Math.max(0, c.level - 1)
+        const avg = averageDie(hd)
+        total += hd + CON_MOD // first level max
+        total += extraLevels * (avg + CON_MOD)
+      } else if (method === 'fixed') {
+        const avg = averageDie(hd)
+        total += c.level * (avg + CON_MOD)
+      } else if (method === 'rollEach') {
+        const arr = rolls[c.klass.id] || []
+        // ensure we have enough rolls
+        if (arr.length < c.level) rollLevels(c.klass.id, c.level)
+        total += arr.slice(0, c.level).reduce((s, v) => s + v + CON_MOD, 0)
+      }
+    })
+  }
+  if (total < 1) total = 1
+
+  return (
+    <div style={{ display: 'grid', gap: 12 }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+        {(([ 
+          ['maxFirstFixed', 'Max 1st + Avg Later'],
+          ['fixed', 'Average Each Level'],
+          ['rollEach', 'Roll Each Level'],
+          ['maxEach', 'Max Every Level'],
+          ['manual', 'Manual Total'],
+        ] as Array<[string, string]>)).map(([k, label]) => (
+          <Button key={k} size="sm" variant={method === k ? 'default' : 'outline'} onClick={() => onMethodChange(k as any)}>{label}</Button>
+        ))}
+      </div>
+      {method === 'manual' && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <input type="number" value={manualTotal} onChange={e => setManualTotal(e.target.value === '' ? '' : parseInt(e.target.value))} placeholder="Enter total HP" style={{ padding: '6px 8px', borderRadius: 6, border: '1px solid var(--muted-border)', width: 140 }} />
+        </div>
+      )}
+      {method === 'rollEach' && (
+        <div style={{ display: 'grid', gap: 8 }}>
+          {classes.map(c => {
+            const hd = hitDieFor(c.klass.id)
+            const arr = rolls[c.klass.id] || []
+            return (
+              <div key={c.klass.id} style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+                <div style={{ fontSize: 12, fontWeight: 600 }}>{c.klass.name} d{hd}</div>
+                <Button size="sm" variant="outline" onClick={() => rollLevels(c.klass.id, c.level)}>Roll Missing</Button>
+                {Array.from({ length: c.level }, (_, i) => (
+                  <span key={i} style={{ padding: '2px 6px', borderRadius: 6, background: 'var(--pill-bg, #f1f5f9)', border: '1px solid var(--muted-border)', fontSize: 11 }}>
+                    {arr[i] != null ? arr[i] : '?'}+{CON_MOD}
+                  </span>
+                ))}
+              </div>
+            )
+          })}
+        </div>
+      )}
+      <div style={{ fontSize: 12, color: '#64748b' }}>CON Mod applied per level. Minimum 1 HP enforced.</div>
+      <div style={{ fontSize: 14, fontWeight: 600 }}>Total Hit Points: {total}</div>
     </div>
   )
 }
@@ -3717,13 +4141,12 @@ function RaceSelector(props: { value: Race; onChange: (v: Race) => void }) {
       )}
 
       {/* Other races remain direct buttons */}
-      {others.map((r) => (
+      {others.map(r => (
         <Button key={r.id} size="sm" variant={props.value.id === r.id ? 'default' : 'outline'} onClick={() => props.onChange(r)}>{r.name}</Button>
       ))}
     </div>
   )
 }
-
 function SkillSourceGraph({ name, sources }: { name: string; sources: string[] }) {
   // Normalize and label sources
   const labelFor = (src: string) => {
@@ -3804,9 +4227,16 @@ function CombinedSourcesGraph({ skills, skillSources, race, raceReplPicks, class
     if (skillHasSources(s.id) || classAvailSkillIds.has(s.id) || isEligibleForRaceReplacement(s.id)) includedSkillIds.add(s.id)
   })
   if (includedSkillIds.size === 0) {
-    return <div style={{ fontSize: 12, color: '#94a3b8' }}>No skills currently have sources or availability.</div>
+    return (
+      <div style={{ fontSize: 12, color: '#94a3b8', lineHeight: 1.4 }}>
+        No skill sources yet. Add a class, pick a race/background, select a feat that grants a skill, or manually toggle a skill in the List tab to see the source graph populate.
+      </div>
+    )
   }
-  const isChoice = (src: string) => src === 'manual' || src === 'race-pick' || src.startsWith('class:') || src.startsWith('feat:')
+  // Choice sources are those the user explicitly toggles on a per-skill basis (manual, race replacement, feats).
+  // Class sources act like fixed once granted (we already render availability with dotted edges),
+  // so we intentionally DO NOT classify class:<id> here to avoid duplicating nodes on both sides.
+  const isChoice = (src: string) => src === 'manual' || src === 'race-pick' || src.startsWith('feat:')
   // Gather unique source keys from skills that have sources, split by type
   const allKeys = Array.from(new Set(skills.filter((s) => skillHasSources(s.id)).flatMap((s) => (skillSources[s.id] || []))))
   const fixedKeys = allKeys.filter((k) => !isChoice(k))
@@ -3816,6 +4246,13 @@ function CombinedSourcesGraph({ skills, skillSources, race, raceReplPicks, class
     if (src === 'race') return `Race${race?.name ? `: ${race.name}` : ''}`
     if (src === 'race-pick') return 'Race (replacement)'
     if (src === 'manual') return 'Manual'
+    if (src.startsWith('feat:')) {
+      const featId = src.split(':')[1]
+      // Friendly labels for known feat skill sources
+      if (featId === 'skilled') return 'Feat: Skilled'
+      if (featId === 'prodigy') return 'Feat: Prodigy'
+      return `Feat: ${featId.replace(/(^[a-z])/, c => c.toUpperCase())}`
+    }
     if (src.startsWith('class:')) {
       const id = src.split(':')[1]
       const cname = CLASSES.find(c => c.id === id)?.name || id
@@ -3842,7 +4279,11 @@ function CombinedSourcesGraph({ skills, skillSources, race, raceReplPicks, class
   const classAvailKeys = (classes || [])
     .filter((c) => CLASS_SKILL_CHOICES[c.klass.id])
     .map((c) => `class:${c.klass.id}`)
-  const leftClassNodes = classAvailKeys.map((key, i) => ({ id: key, label: labelFor(key), x: leftX, y: padding + (leftFixedNodes.length + i) * rowGap }))
+  // Avoid duplicating class nodes: if a class has already granted a skill (so class:<id> is in fixedKeysAug)
+  // we don't render a second availability node for it.
+  const leftClassNodes = classAvailKeys
+    .filter((key) => !fixedKeysAug.includes(key))
+    .map((key, i) => ({ id: key, label: labelFor(key), x: leftX, y: padding + (leftFixedNodes.length + i) * rowGap }))
   const leftNodes = [...leftFixedNodes, ...leftClassNodes]
   // Barycentric ordering: compute neighbor indices on the left for each included skill
   const leftIndex: Record<string, number> = {}

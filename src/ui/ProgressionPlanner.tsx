@@ -482,10 +482,27 @@ function ProgressStepNode({ id, data }: { id: string; data: ProgressStepData }) 
         </div>
         {!data.collapsed && (
           <>
-            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, background: '#fff', border: '1px solid #e2e8f0', padding: '4px 8px', borderRadius: 6, width: 'fit-content' }} title="Mark this step as a planned future choice (will appear greyed)">
-              <input type="checkbox" checked={future} onChange={e => data.onChange?.({ future: e.target.checked })} />
-              <span>{future ? 'Future Step (planned)' : 'Current Step'}</span>
-            </label>
+            {/* Present/Future toggle */}
+            <button
+              type="button"
+              onClick={() => data.onChange?.({ future: !future })}
+              className="nodrag nopan"
+              title={future ? 'This step is planned (future). Click to mark as present.' : 'This step is present. Click to mark as future (planned).'}
+              style={{
+                fontSize: 12,
+                padding: '6px 14px',
+                borderRadius: 8,
+                cursor: 'pointer',
+                border: future ? '1px solid #2563eb' : '1px solid #1d4ed8',
+                background: future ? '#ffffff' : '#2563eb',
+                color: future ? '#2563eb' : '#ffffff',
+                fontWeight: 600,
+                letterSpacing: '.25px',
+                boxShadow: '0 1px 2px rgba(0,0,0,0.08)',
+                transition: 'background .15s, color .15s, border-color .15s'
+              }}
+              aria-pressed={!future}
+            >{future ? 'Future' : 'Present'}</button>
             <label style={{ display: 'grid', gap: 6, fontSize: 12, color: '#475569' }}>
               <span>Character Level</span>
               <input type="number" min={1} max={20} value={data.level} onChange={(e) => data.onChange?.({ level: Math.max(1, Math.min(20, parseInt(e.target.value || '1', 10))) })} style={inp} />

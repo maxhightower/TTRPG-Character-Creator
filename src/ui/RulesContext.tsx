@@ -8,6 +8,8 @@ export type RulesState = {
   multiclassReqs: boolean
   featsEnabled: boolean
   customOrigin: boolean
+  manualAbilityAdjust: boolean
+  manualHitPoints?: boolean
   optionalClassRules?: Record<string, Record<string, boolean>>
 }
 
@@ -18,6 +20,8 @@ type RulesContextValue = RulesState & {
   setMulticlassReqs: (v: boolean) => void
   setFeatsEnabled: (v: boolean) => void
   setCustomOrigin: (v: boolean) => void
+  setManualAbilityAdjust: (v: boolean) => void
+  setManualHitPoints: (v: boolean) => void
   setTceMode: (m: '2+1' | '1+1+1') => void
   setTceAlloc: (alloc: Record<AbilityKey, number>) => void
   resetTceAllocForMode: () => void
@@ -35,6 +39,8 @@ export function RulesProvider({ children }: { children: React.ReactNode }) {
   const [multiclassReqs, setMulticlassReqs] = useState(false)
   const [featsEnabled, setFeatsEnabled] = useState(true)
   const [customOrigin, setCustomOrigin] = useState(false)
+  const [manualAbilityAdjust, setManualAbilityAdjust] = useState(true)
+  const [manualHitPoints, setManualHitPoints] = useState(false)
   const [tceMode, setTceMode] = useState<'2+1' | '1+1+1'>('2+1')
   const [tceAlloc, setTceAlloc] = useState<Record<AbilityKey, number>>({ ...defaultAlloc, str: 2, dex: 1 })
   const [optionalClassRules, setOptionalClassRules] = useState<Record<string, Record<string, boolean>>>({})
@@ -42,10 +48,10 @@ export function RulesProvider({ children }: { children: React.ReactNode }) {
   // Persist globally so it works across pages and sessions
   useEffect(() => {
     try {
-    const payload: RulesState = { tceCustomAsi, tceMode, tceAlloc, multiclassReqs, featsEnabled, customOrigin, optionalClassRules }
+    const payload: RulesState = { tceCustomAsi, tceMode, tceAlloc, multiclassReqs, featsEnabled, customOrigin, manualAbilityAdjust, manualHitPoints, optionalClassRules }
     localStorage.setItem('rules.global.v1', JSON.stringify(payload))
     } catch {}
-  }, [tceCustomAsi, tceMode, JSON.stringify(tceAlloc), multiclassReqs, featsEnabled, customOrigin, JSON.stringify(optionalClassRules)])
+  }, [tceCustomAsi, tceMode, JSON.stringify(tceAlloc), multiclassReqs, featsEnabled, customOrigin, manualAbilityAdjust, manualHitPoints, JSON.stringify(optionalClassRules)])
 
   useEffect(() => {
     try {
@@ -58,6 +64,8 @@ export function RulesProvider({ children }: { children: React.ReactNode }) {
   if (typeof saved?.multiclassReqs === 'boolean') setMulticlassReqs(saved.multiclassReqs)
   if (typeof saved?.featsEnabled === 'boolean') setFeatsEnabled(saved.featsEnabled)
   if (typeof saved?.customOrigin === 'boolean') setCustomOrigin(saved.customOrigin)
+  if (typeof saved?.manualAbilityAdjust === 'boolean') setManualAbilityAdjust(saved.manualAbilityAdjust)
+  if (typeof saved?.manualHitPoints === 'boolean') setManualHitPoints(saved.manualHitPoints)
   if (saved?.optionalClassRules && typeof saved.optionalClassRules === 'object') setOptionalClassRules(saved.optionalClassRules)
     } catch {}
   }, [])
@@ -87,12 +95,16 @@ export function RulesProvider({ children }: { children: React.ReactNode }) {
     setMulticlassReqs,
     setFeatsEnabled,
     setCustomOrigin,
+    manualAbilityAdjust,
+    setManualAbilityAdjust,
+    manualHitPoints,
+    setManualHitPoints,
     setTceMode,
     setTceAlloc,
     resetTceAllocForMode,
     optionalClassRules,
     setOptionalClassRule,
-  }), [open, tceCustomAsi, multiclassReqs, featsEnabled, customOrigin, tceMode, JSON.stringify(tceAlloc), JSON.stringify(optionalClassRules)])
+  }), [open, tceCustomAsi, multiclassReqs, featsEnabled, customOrigin, manualAbilityAdjust, manualHitPoints, tceMode, JSON.stringify(tceAlloc), JSON.stringify(optionalClassRules)])
 
   return <RulesContext.Provider value={value}>{children}</RulesContext.Provider>
 }

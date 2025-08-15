@@ -39,7 +39,7 @@ const OPTIONAL_CLASS_RULES: Record<string, Array<{ key: string; name: string; de
 }
 
 export function RulesDrawer({ theme, setTheme, activeClassIds = [] }: RulesDrawerProps) {
-  const { open, setOpen, multiclassReqs, setMulticlassReqs, tceCustomAsi, setTceCustomAsi, featsEnabled, setFeatsEnabled, customOrigin, setCustomOrigin, optionalClassRules, setOptionalClassRule } = useRules()
+  const { open, setOpen, multiclassReqs, setMulticlassReqs, tceCustomAsi, setTceCustomAsi, featsEnabled, setFeatsEnabled, customOrigin, setCustomOrigin, manualAbilityAdjust, setManualAbilityAdjust, manualHitPoints, setManualHitPoints, optionalClassRules, setOptionalClassRule } = useRules()
   if (!open) return null
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 1000 }}>
@@ -77,6 +77,20 @@ export function RulesDrawer({ theme, setTheme, activeClassIds = [] }: RulesDrawe
                 <div style={{ fontSize: 12, color: '#64748b' }}>Allow spending ASI points on feats</div>
               </div>
               <Button size="sm" variant={featsEnabled ? 'default' : 'outline'} onClick={() => setFeatsEnabled(!featsEnabled)}>{featsEnabled ? 'On' : 'Off'}</Button>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+              <div>
+                <div style={{ fontWeight: 600, fontSize: 13 }}>Enable Manual Score Adjustment</div>
+                <div style={{ fontSize: 12, color: '#64748b' }}>Allow direct +/- editing when not using Point Buy</div>
+              </div>
+              <Button size="sm" variant={manualAbilityAdjust ? 'default' : 'outline'} onClick={() => setManualAbilityAdjust(!manualAbilityAdjust)}>{manualAbilityAdjust ? 'On' : 'Off'}</Button>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+              <div>
+                <div style={{ fontWeight: 600, fontSize: 13 }}>Manual Hit Points</div>
+                <div style={{ fontSize: 12, color: '#64748b' }}>Enable rolling & custom HP calculation methods</div>
+              </div>
+              <Button size="sm" variant={manualHitPoints ? 'default' : 'outline'} onClick={() => setManualHitPoints(!manualHitPoints)}>{manualHitPoints ? 'On' : 'Off'}</Button>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
               <div>
