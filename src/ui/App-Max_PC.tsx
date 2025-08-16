@@ -5,7 +5,6 @@ import ProgressionPlanner from './ProgressionPlanner.tsx'
 import { RulesProvider, useRules } from './RulesContext.tsx'
 import { RulesDrawer } from './RulesDrawer.tsx'
 import { CharacterSheet } from './CharacterSheet.tsx'
-import DMScreen from './DMScreen.tsx'
 
 function RulesButton() {
   const { setOpen } = useRules()
@@ -18,7 +17,7 @@ function RulesButton() {
 }
 
 export function App() {
-  const [tab, setTab] = useState<'builder' | 'sheet' | 'planner' | 'optimizer' | 'dm'>('builder')
+  const [tab, setTab] = useState<'builder' | 'sheet' | 'planner' | 'optimizer'>('builder')
   const [character, setCharacter] = useState<BuilderState | undefined>(undefined)
   const [derived, setDerived] = useState<any>(undefined)
   // theme
@@ -75,7 +74,6 @@ export function App() {
               <button onClick={() => setTab('builder')} style={btn(tab === 'builder')}>Character Builder</button>
               <button onClick={() => setTab('planner')} style={btn(tab === 'planner')}>Progression Planner</button>
               <button onClick={() => setTab('optimizer')} style={btn(tab === 'optimizer')}>Damage Calculator</button>
-              <button onClick={() => setTab('dm')} style={btn(tab === 'dm')}>DM Screen</button>
             </nav>
             <RulesButton />
           </div>
@@ -93,8 +91,6 @@ export function App() {
           <ProgressionPlanner character={character} derived={derived} onApplyPlan={onApplyPlan} />
         ) : tab === 'optimizer' ? (
           <NodeOptimizer character={character} derived={derived} />
-        ) : tab === 'dm' ? (
-          <DMScreen />
         ) : null}
       </main>
   <RulesDrawer theme={theme} setTheme={setTheme} activeClassIds={(character?.classes||[]).map(c=>c.klass.id)} />

@@ -11,6 +11,7 @@ export type RulesState = {
   manualAbilityAdjust: boolean
   manualHitPoints?: boolean
   optionalClassRules?: Record<string, Record<string, boolean>>
+  directionalFacing?: boolean
 }
 
 type RulesContextValue = RulesState & {
@@ -27,6 +28,8 @@ type RulesContextValue = RulesState & {
   resetTceAllocForMode: () => void
   optionalClassRules: Record<string, Record<string, boolean>>
   setOptionalClassRule: (classId: string, ruleKey: string, value: boolean) => void
+  directionalFacing: boolean
+  setDirectionalFacing: (v: boolean) => void
 }
 
 const defaultAlloc: Record<AbilityKey, number> = { str: 0, dex: 0, con: 0, int: 0, wis: 0, cha: 0 }
@@ -44,14 +47,15 @@ export function RulesProvider({ children }: { children: React.ReactNode }) {
   const [tceMode, setTceMode] = useState<'2+1' | '1+1+1'>('2+1')
   const [tceAlloc, setTceAlloc] = useState<Record<AbilityKey, number>>({ ...defaultAlloc, str: 2, dex: 1 })
   const [optionalClassRules, setOptionalClassRules] = useState<Record<string, Record<string, boolean>>>({})
+  const [directionalFacing, setDirectionalFacing] = useState(false)
 
   // Persist globally so it works across pages and sessions
   useEffect(() => {
     try {
-    const payload: RulesState = { tceCustomAsi, tceMode, tceAlloc, multiclassReqs, featsEnabled, customOrigin, manualAbilityAdjust, manualHitPoints, optionalClassRules }
+    const payload: RulesState = { tceCustomAsi, tceMode, tceAlloc, multiclassReqs, featsEnabled, customOrigin, manualAbilityAdjust, manualHitPoints, optionalClassRules, directionalFacing }
     localStorage.setItem('rules.global.v1', JSON.stringify(payload))
     } catch {}
-  }, [tceCustomAsi, tceMode, JSON.stringify(tceAlloc), multiclassReqs, featsEnabled, customOrigin, manualAbilityAdjust, manualHitPoints, JSON.stringify(optionalClassRules)])
+  }, [tceCustomAsi, tceMode, JSON.stringify(tceAlloc), multiclassReqs, featsEnabled, customOrigin, manualAbilityAdjust, manualHitPoints, JSON.stringify(optionalClassRules), directionalFacing])
 
   useEffect(() => {
     try {
@@ -67,6 +71,7 @@ export function RulesProvider({ children }: { children: React.ReactNode }) {
   if (typeof saved?.manualAbilityAdjust === 'boolean') setManualAbilityAdjust(saved.manualAbilityAdjust)
   if (typeof saved?.manualHitPoints === 'boolean') setManualHitPoints(saved.manualHitPoints)
   if (saved?.optionalClassRules && typeof saved.optionalClassRules === 'object') setOptionalClassRules(saved.optionalClassRules)
+  if (typeof saved?.directionalFacing === 'boolean') setDirectionalFacing(saved.directionalFacing)
     } catch {}
   }, [])
 
@@ -104,7 +109,9 @@ export function RulesProvider({ children }: { children: React.ReactNode }) {
     resetTceAllocForMode,
     optionalClassRules,
     setOptionalClassRule,
-  }), [open, tceCustomAsi, multiclassReqs, featsEnabled, customOrigin, manualAbilityAdjust, manualHitPoints, tceMode, JSON.stringify(tceAlloc), JSON.stringify(optionalClassRules)])
+    directionalFacing,
+    setDirectionalFacing,
+  }), [open, tceCustomAsi, multiclassReqs, featsEnabled, customOrigin, manualAbilityAdjust, manualHitPoints, tceMode, JSON.stringify(tceAlloc), JSON.stringify(optionalClassRules), directionalFacing])
 
   return <RulesContext.Provider value={value}>{children}</RulesContext.Provider>
 }

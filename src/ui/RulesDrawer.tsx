@@ -39,7 +39,7 @@ const OPTIONAL_CLASS_RULES: Record<string, Array<{ key: string; name: string; de
 }
 
 export function RulesDrawer({ theme, setTheme, activeClassIds = [] }: RulesDrawerProps) {
-  const { open, setOpen, multiclassReqs, setMulticlassReqs, tceCustomAsi, setTceCustomAsi, featsEnabled, setFeatsEnabled, customOrigin, setCustomOrigin, manualAbilityAdjust, setManualAbilityAdjust, manualHitPoints, setManualHitPoints, optionalClassRules, setOptionalClassRule } = useRules()
+  const { open, setOpen, multiclassReqs, setMulticlassReqs, tceCustomAsi, setTceCustomAsi, featsEnabled, setFeatsEnabled, customOrigin, setCustomOrigin, manualAbilityAdjust, setManualAbilityAdjust, manualHitPoints, setManualHitPoints, optionalClassRules, setOptionalClassRule, directionalFacing, setDirectionalFacing } = useRules()
   if (!open) return null
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 1000 }}>
@@ -105,6 +105,13 @@ export function RulesDrawer({ theme, setTheme, activeClassIds = [] }: RulesDrawe
                 <div style={{ fontSize: 12, color: '#64748b' }}>Enable custom racial ability allocation</div>
               </div>
               <Button size="sm" variant={tceCustomAsi ? 'default' : 'outline'} onClick={() => setTceCustomAsi(!tceCustomAsi)}>{tceCustomAsi ? 'On' : 'Off'}</Button>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+              <div>
+                <div style={{ fontWeight: 600, fontSize: 13 }}>Directional Facing (Experimental)</div>
+                <div style={{ fontSize: 12, color: '#64748b' }}>Tokens show facing; Alt+Wheel rotate (15°)</div>
+              </div>
+              <Button size="sm" variant={directionalFacing ? 'default' : 'outline'} onClick={() => setDirectionalFacing(!directionalFacing)}>{directionalFacing ? 'On' : 'Off'}</Button>
             </div>
             {/* Optional Class Rules */}
             {activeClassIds.length > 0 && (
