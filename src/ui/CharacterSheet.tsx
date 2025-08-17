@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import type { AppState as BuilderState } from './Builder.tsx'
+import type { Equipment } from '../data/types'
 
 type AbilityKey = 'str' | 'dex' | 'con' | 'int' | 'wis' | 'cha'
 function isAbility(k: any): k is AbilityKey { return k === 'str' || k === 'dex' || k === 'con' || k === 'int' || k === 'wis' || k === 'cha' }
@@ -212,6 +213,8 @@ export function CharacterSheet(props: { character?: BuilderState; derived?: any 
           ))}
         </div>
       </section>
+
+  <AttackOptionsSection character={character} derived={derived} sheet={sheet} abilitiesFinal={abilitiesFinal} />
 
       {(sheet.rageRemaining || derived?.rageUses) && (
         <section style={card()}>
@@ -491,3 +494,154 @@ const modTemplateCtx = { dex: 0, str: 0 } // will be overwritten each render by 
 
 // Override during render via side-effect (safe enough given deterministic order) – not ideal but keeps quick buttons simple
 export function __setTemplateMods(dex: number, str: number) { modTemplateCtx.dex = dex; modTemplateCtx.str = str }
+
+// ---------------- Attack Options Section ----------------
+
+type AttackOption = {
+  id: string
+  label: string
+  weaponId: string
+  attackBonus: number
+  abilityMod: number
+  avgNormal: number
+  avgCrit: number
+  hitChance: number // includes crit chance
+  expected: number
+  notes?: string
+}
+
+function AttackOptionsSection(props: { character: BuilderState; derived: any; sheet: SheetState; abilitiesFinal: Record<AbilityKey, number> }) {
+  const { character, derived, sheet, abilitiesFinal } = props
+  const [targetAC, setTargetAC] = useState<number>(15)
+  const [advMode, setAdvMode] = useState<'normal' | 'adv' | 'dis'>('normal')
+  const [includeRage, setIncludeRage] = useState<boolean>(false)
+
+  // Auto-enable rage toggle if character has rage remaining and not already toggled when section mounts
+  useEffect(() => {
+    if (!includeRage && typeof sheet.rageRemaining !== 'undefined') {
+      // leave off by default; user can toggle
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const prof = derived?.totalLevel ? proficiencyBonus(derived.totalLevel) : 0
+  const rageBonus = includeRage && derived?.rageDamageBonus && sheet.rageRemaining ? derived.rageDamageBonus : 0
+
+  const options: AttackOption[] = useMemo(() => {
+    if (!character?.loadout) return []
+    const out: AttackOption[] = []
+    character.loadout.filter(i => i.type === 'weapon').forEach(w => {
+      const weapon = w as Extract<Equipment, { type: 'weapon' }>
+      const tags = (weapon.tags || [])
+      // Pick ability mod
+      let ability: AbilityKey = 'str'
+      if (tags.includes('ranged')) ability = 'dex'
+      else if (tags.includes('finesse')) ability = (abilitiesFinal.dex >= abilitiesFinal.str ? 'dex' : 'str')
+      const abilityMod = mod(abilitiesFinal[ability])
+      const attackBonus = abilityMod + prof // assume proficiency; could refine later
+      // Parse damage dice (e.g., "2d6 slashing")
+      const diceMatch = weapon.dmg.match(/(\d*)d(\d+)/i)
+      let diceCount = 1, diceSides = 6
+      if (diceMatch) {
+        diceCount = Number(diceMatch[1] || 1)
+        diceSides = Number(diceMatch[2])
+      }
+      const avgDice = diceCount * (diceSides + 1) / 2
+      const avgNormal = avgDice + abilityMod + rageBonus
+      const avgCrit = avgDice * 2 + abilityMod + rageBonus
+      const hitChanceBase = chanceToHit(attackBonus, targetAC)
+      const hitChance = applyAdvantageMode(hitChanceBase, advMode)
+      const critChance = 0.05 // simplified
+      const nonCritHitChance = Math.max(0, hitChance - critChance)
+      const expected = nonCritHitChance * avgNormal + critChance * avgCrit
+      out.push({
+        id: weapon.id,
+        label: weapon.name,
+        weaponId: weapon.id,
+        attackBonus,
+        abilityMod,
+        avgNormal: round2(avgNormal),
+        avgCrit: round2(avgCrit),
+        hitChance: hitChance,
+        expected: round2(expected),
+        notes: ability.toUpperCase() + (rageBonus ? ' +Rage' : '')
+      })
+    })
+    // Sort by expected descending
+    out.sort((a,b)=> b.expected - a.expected)
+    return out
+  }, [character, abilitiesFinal, prof, targetAC, advMode, rageBonus])
+
+  if (!character?.loadout?.some(i => i.type === 'weapon')) return null
+
+  return (
+    <section style={card()}>
+      <h3 style={h3()}>Attack Options</h3>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center', marginBottom: 8 }}>
+        <label style={{ fontSize: 12 }}>Target AC <input type="number" value={targetAC} onChange={e=> setTargetAC(Number(e.target.value)||0)} style={input()} /></label>
+        <label style={{ fontSize: 12 }}>Advantage
+          <select value={advMode} onChange={e=> setAdvMode(e.target.value as any)} style={{ ...input(), minWidth: 110 }}>
+            <option value="normal">Normal</option>
+            <option value="adv">Advantage</option>
+            <option value="dis">Disadvantage</option>
+          </select>
+        </label>
+        {typeof sheet.rageRemaining !== 'undefined' && (
+          <label style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}>
+            <input type="checkbox" checked={includeRage} onChange={e=> setIncludeRage(e.target.checked)} /> Include Rage Damage
+          </label>
+        )}
+        <div style={{ fontSize: 11, opacity: 0.7 }}>Estimates ignore special fighting styles & feats (future enhancement).</div>
+      </div>
+      {options.length === 0 ? <div style={{ fontSize: 12, opacity: 0.6 }}>No weapon attacks.</div> : (
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+            <thead>
+              <tr style={{ background: 'var(--card-bg-alt, #f1f5f9)' }}>
+                <th style={atkTh}>Weapon</th>
+                <th style={atkTh}>Atk Bonus</th>
+                <th style={atkTh}>Hit %</th>
+                <th style={atkTh}>Avg Dmg</th>
+                <th style={atkTh}>Crit Avg</th>
+                <th style={atkTh}>Exp DPR</th>
+                <th style={atkTh}>Notes</th>
+              </tr>
+            </thead>
+            <tbody>
+              {options.map(o => (
+                <tr key={o.id} style={{ borderTop: '1px solid var(--muted-border)' }}>
+                  <td style={atkTd}>{o.label}</td>
+                  <td style={atkTd}>{formatBonus(o.attackBonus)}</td>
+                  <td style={atkTd}>{Math.round(o.hitChance*100)}%</td>
+                  <td style={atkTd}>{o.avgNormal}</td>
+                  <td style={atkTd}>{o.avgCrit}</td>
+                  <td style={atkTd}>{o.expected}</td>
+                  <td style={atkTd}>{o.notes}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  )
+}
+
+function chanceToHit(attackBonus: number, targetAC: number) {
+  const needed = targetAC - attackBonus
+  // Need to roll needed or higher on d20; min roll 1, max 20.
+  const success = 21 - needed // number of successful roll values
+  const p = clamp(0, 20, success) / 20
+  return clamp(0, 1, p)
+}
+
+function applyAdvantageMode(p: number, mode: 'normal' | 'adv' | 'dis') {
+  if (mode === 'adv') return 1 - (1 - p) * (1 - p)
+  if (mode === 'dis') return p * p
+  return p
+}
+
+function round2(v: number) { return Math.round(v * 100) / 100 }
+
+const atkTh: React.CSSProperties = { padding: '6px 8px', textAlign: 'left', fontWeight: 600, fontSize: 11, letterSpacing: 0.5, textTransform: 'uppercase', borderLeft: '1px solid var(--muted-border)', whiteSpace: 'nowrap' }
+const atkTd: React.CSSProperties = { padding: '6px 8px', textAlign: 'center', fontSize: 12 }

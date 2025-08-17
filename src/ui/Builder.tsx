@@ -10,6 +10,9 @@ import { BACKGROUNDS } from '../data/backgrounds'
 import { SPELLS, SPELL_META, ALL_SPELL_SCHOOLS, ALL_DAMAGE_TYPES, ALL_SAVE_ABILITIES } from '../data/spells'
 import { EQUIPMENT, SUBACTIONS_BY_ITEM } from '../data/equipment'
 import { FEATS } from '../data/feats'
+import { RACE_TRAIT_SKILLS, CLASS_SKILL_CHOICES } from '../data/proficiencyMaps'
+import { Pill, Button, Card, CardHeader, CardTitle, CardContent, ErrorBoundary } from './primitives'
+import { CombatProficiencyList, CombatProficiencySources, OtherProficiencyList, OtherProficiencySources, computeOtherProficiencies } from './proficiencies'
 
 // ---------------- Demo Data (typed) ----------------
 
@@ -847,9 +850,40 @@ function computeDerived(state: AppState, opts?: RuleOpts) {
   return { ac, hp, speed, subactions, dexMod, conMod, strMod, saves, saveProfs, totalLevel, initiative, rageUses, rageDamageBonus, barbarianLevel }
 }
 
+// Basic proficiency inference (simplified 5e defaults)
+
 // simulateReadiness removed
 
 // ---------------- Local UI helpers ----------------
+
+
+function SkillsPageNav(props: { current: 'skills' | 'combat' | 'other'; onChange: (p: 'skills' | 'combat' | 'other') => void }) {
+  const linkStyle = (active: boolean): React.CSSProperties => ({
+    padding: '4px 10px',
+    fontSize: 12,
+    fontWeight: 600,
+    letterSpacing: 0.5,
+    cursor: 'pointer',
+    borderRadius: 6,
+    background: active ? 'var(--button-active-bg)' : 'transparent',
+    color: active ? 'var(--button-active-fg)' : 'var(--fg)',
+    border: active ? '1px solid var(--button-border)' : '1px solid transparent',
+    transition: 'background 120ms',
+    textTransform: 'uppercase'
+  })
+  return (
+    <div style={{ display: 'flex', gap: 4, marginBottom: 10, borderBottom: '1px solid var(--muted-border)', paddingBottom: 6 }}>
+      {([
+        ['skills','Skills'],
+        ['combat','Combat Profs'],
+        ['other','Other Profs'],
+      ] as const).map(([k,label]) => (
+        <div key={k} onClick={() => props.onChange(k)} style={linkStyle(props.current === k)}>{label}</div>
+      ))}
+    </div>
+  )
+}
+
 
 function Labeled(props: { label: string; children: React.ReactNode }) {
   return (
@@ -860,44 +894,11 @@ function Labeled(props: { label: string; children: React.ReactNode }) {
   )
 }
 
-function Pill(props: { children: React.ReactNode; style?: React.CSSProperties }) {
-  return <span style={{ padding: '2px 8px', borderRadius: 999, background: 'var(--pill-bg, #f1f5f9)', color: 'var(--fg)', fontSize: 12, whiteSpace: 'nowrap', ...(props.style || {}) }}>{props.children}</span>
-}
-
-function Button(props: React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: 'default' | 'outline' | 'ghost'; size?: 'sm' | 'md' | 'icon' }) {
-  const { variant = 'default', size = 'md', style, ...rest } = props
-  const base: React.CSSProperties = {
-    borderRadius: 8,
-    border: '1px solid var(--button-border)',
-    background: variant === 'default' ? 'var(--button-active-bg)' : 'var(--button-bg)',
-    color: variant === 'default' ? 'var(--button-active-fg)' : 'var(--button-fg)',
-  cursor: 'pointer',
-  whiteSpace: 'nowrap',
-  }
-  if (variant === 'outline') { base.background = 'var(--button-bg)' }
-  if (variant === 'ghost') { base.background = 'transparent'; base.border = '1px solid transparent' }
-  if (size === 'sm') { base.padding = '6px 10px'; base.fontSize = 12 }
-  else if (size === 'icon') { base.padding = 6 }
-  else { base.padding = '8px 12px' }
-  return <button {...rest} style={{ ...base, ...style }} />
-}
 
 // Progress component removed (no longer used)
 
 // ---------------- Simple Card primitives ----------------
 
-function Card(props: { children: React.ReactNode }) {
-  return <section style={card}>{props.children}</section>
-}
-function CardHeader(props: { children: React.ReactNode }) {
-  return <div style={{ padding: '14px 16px', borderBottom: '1px solid #e2e8f0' }}>{props.children}</div>
-}
-function CardTitle(props: { children: React.ReactNode; style?: React.CSSProperties }) {
-  return <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontWeight: 700, fontSize: 15, ...(props.style || {}) }}>{props.children}</div>
-}
-function CardContent(props: { children: React.ReactNode }) {
-  return <div style={{ padding: 16, display: 'grid', gap: 12 }}>{props.children}</div>
-}
 
 // ---------------- Styles ----------------
 
@@ -918,9 +919,7 @@ function StatBadge({ label, value }: { label: string; value: React.ReactNode }) 
   )
 }
 
-// Placeholder maps restored after refactor (simplified). Replace with richer data as needed.
-const RACE_TRAIT_SKILLS: Record<string, string[]> = {}
-const CLASS_SKILL_CHOICES: Record<string, { picks: number; options: string[] }> = {}
+// Skill / trait mapping now imported from data/proficiencyMaps
 
 // ---------------- App State ----------------
 
@@ -1073,13 +1072,19 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
   const [skillSort, setSkillSort] = useState<'ability' | 'alpha' | 'bonus' | 'proftype'>('ability')
   // Skills list layout mode
   const [skillLayout, setSkillLayout] = useState<'single' | 'double' | 'grid'>('grid')
+  // Skill list expansion state (hoisted so hook order is stable when switching tabs)
+  const [expandedSkills, setExpandedSkills] = useState<Record<string, boolean>>({})
   // Track sources that grant a skill (bg, race, class:<id>) to avoid orange toggling issues
   const [skillSources, setSkillSources] = useState<Record<string, string[]>>({})
   // Ref mirror to allow snapshot comparisons without creating dependency loops
   const skillSourcesRef = useRef<Record<string, string[]>>({})
   useEffect(() => { skillSourcesRef.current = skillSources }, [skillSources])
   // Skills tab view
-  const [skillTab, setSkillTab] = useState<'list' | 'sources'>('list')
+  // Skills section now multi-page: skillPage selects category group; each page has its own tab (list|sources)
+  const [skillPage, setSkillPage] = useState<'skills' | 'combat' | 'other'>('skills')
+  const [skillTab, setSkillTab] = useState<'list' | 'sources'>('list') // for Skills page
+  const [combatTab, setCombatTab] = useState<'list' | 'sources'>('list')
+  const [otherTab, setOtherTab] = useState<'list' | 'sources'>('list')
   // Pending choices local selections
   const [classSkillPicks, setClassSkillPicks] = useState<Record<string, string[]>>({})
   const [bgReplPicks, setBgReplPicks] = useState<string[]>([])
@@ -1577,7 +1582,18 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
           }
           if (saved.skillProf && typeof saved.skillProf === 'object') setSkillProf(saved.skillProf)
           if (saved.skillSources && typeof saved.skillSources === 'object') setSkillSources(saved.skillSources)
-          if (typeof saved.skillTab === 'string') setSkillTab(saved.skillTab === 'sources' ? 'sources' : 'list')
+          if (typeof saved.skillTab === 'string') {
+            const legacy = saved.skillTab
+            if (['weapons','armor'].includes(legacy)) { setSkillPage('combat'); setCombatTab('list') }
+            else if (['tools','instruments','vehicles'].includes(legacy)) { setSkillPage('other'); setOtherTab('list') }
+            else setSkillTab(legacy === 'sources' ? 'sources' : 'list')
+          }
+          if (typeof saved.skillPage === 'string') {
+            const pg = saved.skillPage
+            if (pg === 'skills' || pg === 'combat' || pg === 'other') setSkillPage(pg)
+          }
+          if (typeof saved.combatTab === 'string') setCombatTab(saved.combatTab === 'sources' ? 'sources' : 'list')
+          if (typeof saved.otherTab === 'string') setOtherTab(saved.otherTab === 'sources' ? 'sources' : 'list')
           if (typeof saved.skillLayout === 'string') setSkillLayout(saved.skillLayout)
           if (typeof saved.skillSort === 'string') setSkillSort(saved.skillSort)
           if (saved.classSkillPicks && typeof saved.classSkillPicks === 'object') setClassSkillPicks(saved.classSkillPicks)
@@ -1622,7 +1638,10 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
         // Skills
         skillProf,
         skillSources,
-        skillTab,
+      skillPage,
+      skillTab,
+      combatTab,
+      otherTab,
         skillLayout,
         skillSort,
         classSkillPicks,
@@ -1659,7 +1678,7 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
     JSON.stringify(loadout),
     JSON.stringify(skillProf),
     JSON.stringify(skillSources),
-    skillTab,
+  skillTab,
     skillLayout,
     skillSort,
     JSON.stringify(classSkillPicks),
@@ -1838,7 +1857,13 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
       if (impFeatChoices && typeof impFeatChoices === 'object') setFeatChoices(impFeatChoices)
 
       // UI prefs (optional)
+      if (typeof get('skillPage') === 'string') {
+        const pg = get('skillPage')
+        if (pg === 'skills' || pg === 'combat' || pg === 'other') setSkillPage(pg)
+      }
       if (typeof get('skillTab') === 'string') setSkillTab(get('skillTab') === 'sources' ? 'sources' : 'list')
+      if (typeof get('combatTab') === 'string') setCombatTab(get('combatTab') === 'sources' ? 'sources' : 'list')
+      if (typeof get('otherTab') === 'string') setOtherTab(get('otherTab') === 'sources' ? 'sources' : 'list')
       if (typeof get('skillLayout') === 'string') setSkillLayout(get('skillLayout'))
       if (typeof get('skillSort') === 'string') setSkillSort(get('skillSort'))
       // Rules (optional)
@@ -2838,20 +2863,39 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
             )
           })()}
 
-          {/* Skills */}
+      {/* Proficiencies (formerly Skills) */}
           <Card>
             <CardHeader>
-              <CardTitle><Info size={16} style={{ marginRight: 6 }} />Skills</CardTitle>
+        <CardTitle><Info size={16} style={{ marginRight: 6 }} />Proficiencies</CardTitle>
             </CardHeader>
             <CardContent>
-              {/* Tabs */}
-              <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
-                <Button size="sm" variant={skillTab === 'list' ? 'default' : 'outline'} onClick={() => setSkillTab('list')}>List</Button>
-                <Button size="sm" variant={skillTab === 'sources' ? 'default' : 'outline'} onClick={() => setSkillTab('sources')}>Sources</Button>
-              </div>
-
-              {skillTab === 'list' ? (
+              <ErrorBoundary fallback={<div style={{ fontSize: 12, color: 'crimson' }}>Error rendering proficiencies.</div>}>
                 <>
+                  {/* Tabs */}
+                  <SkillsPageNav current={skillPage} onChange={setSkillPage} />
+
+                  {/* Inner tabs for each page */}
+                  {skillPage === 'skills' && (
+                    <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                      <Button size="sm" variant={skillTab === 'list' ? 'default' : 'outline'} onClick={() => setSkillTab('list')}>List</Button>
+                      <Button size="sm" variant={skillTab === 'sources' ? 'default' : 'outline'} onClick={() => setSkillTab('sources')}>Sources</Button>
+                    </div>
+                  )}
+                  {skillPage === 'combat' && (
+                    <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                      <Button size="sm" variant={combatTab === 'list' ? 'default' : 'outline'} onClick={() => setCombatTab('list')}>List</Button>
+                      <Button size="sm" variant={combatTab === 'sources' ? 'default' : 'outline'} onClick={() => setCombatTab('sources')}>Sources</Button>
+                    </div>
+                  )}
+                  {skillPage === 'other' && (
+                    <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                      <Button size="sm" variant={otherTab === 'list' ? 'default' : 'outline'} onClick={() => setOtherTab('list')}>List</Button>
+                      <Button size="sm" variant={otherTab === 'sources' ? 'default' : 'outline'} onClick={() => setOtherTab('sources')}>Sources</Button>
+                    </div>
+                  )}
+
+                  {skillPage === 'skills' && skillTab === 'list' ? (
+                    <>
                   {/* Sort controls */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
                     <div style={{ fontSize: 12, color: '#64748b' }}>Sort By</div>
@@ -2964,8 +3008,6 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
                       }
                       displayItems = interleaved
                     }
-                    // Local expansion state for skills (keyed by id). We keep this ephemeral; not persisted.
-                    const [expandedSkills, setExpandedSkills] = React.useState<Record<string, boolean>>({})
                     const toggleSkill = (id: string) => setExpandedSkills((m) => ({ ...m, [id]: !m[id] }))
                     return (
                       <div style={{ ...containerStyle }}>
@@ -3057,22 +3099,36 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
                       </div>
                     )
                   })()}
-                </>
-              ) : null}
+                    </>
+                  ) : null}
 
-              {skillTab === 'sources' ? (
-                <div style={{ display: 'grid', gap: 8 }}>
-                  <div style={{ fontSize: 12, color: '#64748b' }}>Combined node graph showing all skills and their proficiency sources.</div>
-                  <CombinedSourcesGraph
-                    skills={SKILLS.map(s => ({ id: s.id, name: s.name }))}
-                    skillSources={skillSources}
-                    race={race}
-                    raceReplPicks={raceReplPicks}
-                    classes={classes}
-                    background={background}
-                  />
-                </div>
-              ) : null}
+                  {skillPage === 'skills' && skillTab === 'sources' ? (
+                    <div style={{ display: 'grid', gap: 8 }}>
+                      <div style={{ fontSize: 12, color: '#64748b' }}>Combined node graph showing all skills and their proficiency sources.</div>
+                      <CombinedSourcesGraph
+                        skills={SKILLS.map(s => ({ id: s.id, name: s.name }))}
+                        skillSources={skillSources}
+                        race={race}
+                        raceReplPicks={raceReplPicks}
+                        classes={classes}
+                        background={background}
+                      />
+                    </div>
+                  ) : null}
+                  {skillPage === 'combat' && combatTab === 'list' ? (
+                    <CombatProficiencyList classes={classes} background={background} />
+                  ) : null}
+                  {skillPage === 'combat' && combatTab === 'sources' ? (
+                    <CombatProficiencySources />
+                  ) : null}
+                  {skillPage === 'other' && otherTab === 'list' ? (
+                    <OtherProficiencyList classes={classes} background={background} />
+                  ) : null}
+                  {skillPage === 'other' && otherTab === 'sources' ? (
+                    <OtherProficiencySources />
+                  ) : null}
+                </>
+              </ErrorBoundary>
             </CardContent>
           </Card>
 
