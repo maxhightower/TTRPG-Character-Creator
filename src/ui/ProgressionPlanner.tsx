@@ -1098,6 +1098,17 @@ export function ProgressionPlanner(props: { character?: BuilderState; derived?: 
     if (!ch) return null
     const totalLevel = derived?.totalLevel ?? ch.classes.reduce((s, c) => s + (c.level || 0), 0)
   const levelToClass: Record<number, typeof CLASSES[number]> = {}
+    // If the builder is truly blank (no classes / level 0), seed only a root node (no forced Fighter 1).
+    if (totalLevel <= 0) {
+      const rootId = `root-${crypto.randomUUID().slice(0, 6)}`
+      const rootNode: any = {
+        id: rootId,
+        type: 'root',
+        position: { x: 40, y: 120 },
+        data: { race: ch.race?.name, background: ch.background?.name, collapsed: true } as RootNodeData,
+      }
+      return { nodes: [rootNode], edges: [] as any[] }
+    }
     let lv = 1
     ch.classes.forEach((cl) => {
       for (let i = 0; i < (cl.level || 0); i += 1) {
@@ -1126,7 +1137,7 @@ export function ProgressionPlanner(props: { character?: BuilderState; derived?: 
     const newEdges: any[] = []
     let prevId: string = rootId
     let idx = 0
-    for (let level = 1; level <= Math.max(1, totalLevel || 1); level += 1) {
+  for (let level = 1; level <= totalLevel; level += 1) {
       // Class node for this level
       const idClass = `step-${crypto.randomUUID().slice(0, 6)}`
       const classData: ProgressStepData = {
@@ -1298,25 +1309,23 @@ export function ProgressionPlanner(props: { character?: BuilderState; derived?: 
   const firstRoot = (withHandlers as any[]).find((n) => n.type === 'root')?.id
   if (firstRoot) { setActiveRootId(firstRoot); localStorage.setItem(activeKey, firstRoot); applyActiveHighlight(firstRoot) }
     } else {
-      // 3) Fallback minimal default
+      // 3) Fallback minimal default: root only (no auto Fighter node)
       const rid = `root-${crypto.randomUUID().slice(0, 6)}`
-      const sid = `step-${crypto.randomUUID().slice(0, 6)}`
-      const nodes0: any[] = [
+      const rootOnly: any[] = [
         { id: rid, type: 'root', position: { x: 40, y: 160 }, data: { race: '', background: '', collapsed: true } as RootNodeData },
-        { id: sid, type: 'progressStep', position: { x: 360, y: 120 }, data: { level: 1, type: 'class', className: 'Fighter', collapsed: true } as ProgressStepData },
       ]
-      nodes0.forEach((n) => {
+      rootOnly.forEach((n) => {
         const d: any = { ...n.data }
         d.onChange = (p: any) => updateNodeData(n.id, p)
         d.onDelete = (nid: string) => removeNode(nid)
         if (n.type === 'root') d.onClone = () => cloneBranch(n.id)
-  d.onAddChild = (k?: StepType) => addChild(n.id, k)
+        d.onAddChild = (k?: StepType) => addChild(n.id, k)
         n.data = d
       })
-  setNodes(nodes0)
-      setEdges([{ id: `e-${crypto.randomUUID().slice(0, 6)}`, source: rid, target: sid }])
+      setNodes(rootOnly)
+      setEdges([])
       seededRef.current = true
-  setActiveRootId(rid); localStorage.setItem(activeKey, rid); applyActiveHighlight(rid)
+      setActiveRootId(rid); localStorage.setItem(activeKey, rid); applyActiveHighlight(rid)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.character, props.derived])

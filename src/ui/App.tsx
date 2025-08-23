@@ -5,6 +5,7 @@ import ProgressionPlanner from './ProgressionPlanner.tsx'
 import { RulesProvider, useRules } from './RulesContext.tsx'
 import { RulesDrawer } from './RulesDrawer.tsx'
 import { CharacterSheet } from './CharacterSheet.tsx'
+import { computeDerived } from './Builder.tsx'
 import DMScreen from './DMScreen.tsx'
 
 function RulesButton() {
@@ -88,7 +89,7 @@ export function App() {
             <Builder importPlan={importPlan} onCharacterChange={(s, d) => { setCharacter(s); setDerived(d) }} />
           </div>
         ) : tab === 'sheet' ? (
-          <CharacterSheet character={character} derived={derived} />
+          <CharacterSheet character={character} derived={derived} onCharacterChange={(next) => { setCharacter(next); setDerived(computeDerived(next as any)); }} />
         ) : tab === 'planner' ? (
           <ProgressionPlanner character={character} derived={derived} onApplyPlan={onApplyPlan} />
         ) : tab === 'optimizer' ? (

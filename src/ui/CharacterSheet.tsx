@@ -1,5 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import { Lock as LockIcon, Unlock as UnlockIcon } from 'lucide-react'
 import type { AppState as BuilderState } from './Builder.tsx'
+import { EQUIPMENT } from '../data/equipment'
 import type { Equipment } from '../data/types'
 
 type AbilityKey = 'str' | 'dex' | 'con' | 'int' | 'wis' | 'cha'
@@ -23,9 +25,55 @@ const btn: React.CSSProperties = { padding: '6px 10px', borderRadius: 8, border:
 const primaryBtn: React.CSSProperties = { ...btn, background: 'var(--button-active-bg)', color: 'var(--button-active-fg)' }
 const pill: React.CSSProperties = { padding: '2px 8px', borderRadius: 999, background: 'var(--pill-bg, #f1f5f9)', fontSize: 12 }
 
-export function CharacterSheet(props: { character?: BuilderState; derived?: any }) {
-  const { character, derived } = props
+export function CharacterSheet(props: { character?: BuilderState; derived?: any; onCharacterChange?: (c: BuilderState) => void }) {
+  const { character, derived, onCharacterChange } = props
   const name = character?.name || 'unnamed'
+  // Layout column count (1-3). User adjustable.
+  const [colCount, setColCount] = useState<1 | 2 | 3>(2)
+  // Branch options sourced from Progression Planner root nodes
+  type RootBranch = { id: string; label: string }
+  const [rootBranches, setRootBranches] = useState<RootBranch[]>([])
+  const [selectedRootId, setSelectedRootId] = useState<string | null>(null)
+  const [locked, setLocked] = useState(false)
+  const [lockedSnapshot, setLockedSnapshot] = useState<{ character: BuilderState; derived: any } | null>(null)
+
+  // Load roots from planner localStorage payload
+  useEffect(() => {
+    if (!character) return
+    try {
+      const key = `progressionPlanner.v1:${character.name || 'default'}`
+      const raw = localStorage.getItem(key)
+      if (raw) {
+        const parsed = JSON.parse(raw)
+        const roots: RootBranch[] = (parsed.nodes || [])
+          .filter((n: any) => n.type === 'root')
+          .map((n: any, i: number) => {
+            const r = n.data || {}
+            const race = (r.race || '').toString().trim()
+            const bg = (r.background || '').toString().trim()
+            let label = race && bg ? `${race} / ${bg}` : race || bg || `Root ${i + 1}`
+            label = label.replace(/\s+/g, ' ').slice(0, 60)
+            return { id: n.id, label }
+          })
+        setRootBranches(roots)
+        if (!selectedRootId && roots.length) setSelectedRootId(roots[0].id)
+      }
+    } catch { /* ignore */ }
+  }, [character?.name, selectedRootId])
+
+  // Lock toggling: capture snapshot of current live character/derived
+  const toggleLock = () => {
+    setLocked(l => {
+      if (!l && character) {
+        setLockedSnapshot({ character: structuredClone(character), derived: structuredClone(derived) })
+      }
+      if (l) setLockedSnapshot(null)
+      return !l
+    })
+  }
+
+  const activeCharacter = locked && lockedSnapshot ? lockedSnapshot.character : character
+  const activeDerived = locked && lockedSnapshot ? lockedSnapshot.derived : derived
 
   // Compute max HP & other derived baselines
   const maxHp = derived?.hp || 0
@@ -91,23 +139,24 @@ export function CharacterSheet(props: { character?: BuilderState; derived?: any 
     setSheet(s => reconcileSheet(s, hitDiceTotals, spellSlotsComputed, derived?.rageUses))
   }, [hitDiceTotals, spellSlotsComputed, derived?.rageUses])
 
-  if (!character) return <div style={{ padding: 16, border: '1px dashed var(--muted-border)', borderRadius: 8 }}>Build a character first in the Builder tab.</div>
+  if (!activeCharacter) return <div style={{ padding: 16, border: '1px dashed var(--muted-border)', borderRadius: 8 }}>Build a character first in the Builder tab.</div>
 
   const abilitiesFinal = useMemo(() => {
-    const base: Record<AbilityKey, number> = { ...character.abilities }
-    const race: any = character.race || {}
+    if (!activeCharacter) return { str:0,dex:0,con:0,int:0,wis:0,cha:0 } as Record<AbilityKey, number>
+    const base: Record<AbilityKey, number> = { ...activeCharacter.abilities }
+    const race: any = activeCharacter.race || {}
     if (race?.asi?.fixed) {
       Object.entries(race.asi.fixed).forEach(([k,v]) => {
         if (isAbility(k)) base[k] = (base[k]||0) + (v as number)
       })
     }
-    if (character.asi) {
-      Object.entries(character.asi).forEach(([k,v]) => { if (isAbility(k)) base[k] = (base[k]||0) + (v as number) })
+    if (activeCharacter.asi) {
+      Object.entries(activeCharacter.asi).forEach(([k,v]) => { if (isAbility(k)) base[k] = (base[k]||0) + (v as number) })
     }
     return base
-  }, [character])
+  }, [activeCharacter])
 
-  const classSummary = character.classes.map(c => `${capitalize(c.klass.name)} ${c.level}${c.subclass ? ` (${c.subclass.name})` : ''}`).join(' / ')
+  const classSummary = activeCharacter.classes.map(c => `${capitalize(c.klass.name)} ${c.level}${c.subclass ? ` (${c.subclass.name})` : ''}`).join(' / ')
 
   // Handlers
   const adjustHp = (delta: number) => setSheet(s => ({ ...s, hpCurrent: clamp(0, maxHp, s.hpCurrent + delta) }))
@@ -153,26 +202,56 @@ export function CharacterSheet(props: { character?: BuilderState; derived?: any 
   const quick = (code: string) => { setExpr(code); setTimeout(() => roll(), 0) }
 
   return (
-    <div style={{ display: 'grid', gap: 20, maxWidth: 1300, margin: '0 auto' }}>
+    <div style={{ display: 'grid', gap: 20, maxWidth: 1400, margin: '0 auto' }}>
       <header style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'flex-start' }}>
         <div style={{ flex: '1 1 260px', minWidth: 260 }}>
-          <h2 style={{ margin: '0 0 4px' }}>{character.name || 'Unnamed Character'}</h2>
-          <div style={{ fontSize: 13, color: 'var(--muted-fg, #64748b)' }}>{classSummary || 'No classes yet'}</div>
+          <h2 style={{ margin: '0 0 4px' }}>{activeCharacter.name || 'Unnamed Character'}</h2>
+          <div style={{ fontSize: 13, color: 'var(--muted-fg, #64748b)', marginBottom: 4 }}>{classSummary || 'No classes yet'}</div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <select
+              value={selectedRootId || ''}
+              onChange={e => setSelectedRootId(e.target.value || null)}
+              style={{ padding: '6px 8px', border: '1px solid var(--muted-border)', borderRadius: 6, background: 'var(--card-bg)', fontSize: 12, minWidth: 160 }}
+            >
+              {rootBranches.length === 0 && <option value="">(no roots yet)</option>}
+              {rootBranches.map((b: any) => <option key={b.id} value={b.id}>{b.label}</option>)}
+            </select>
+            <button
+              onClick={toggleLock}
+              style={locked ? primaryBtn : btn}
+              title={locked ? 'Unlock (resume live updates & new snapshots)' : 'Lock (freeze at selected snapshot)'}
+              aria-label={locked ? 'Unlock character sheet (resume live updates & new snapshots)' : 'Lock character sheet (freeze at selected snapshot)'}
+            >
+              {locked ? <LockIcon size={16} strokeWidth={2} aria-hidden /> : <UnlockIcon size={16} strokeWidth={2} aria-hidden />}
+            </button>
+            {/* No 'Latest' button needed now; branch list comes from planner roots */}
+          </div>
         </div>
         <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
-          <Stat label="AC" value={derived?.ac ?? '—'} />
+          <Stat label="AC" value={activeDerived?.ac ?? '—'} />
           <Stat label="HP" value={<span>{sheet.hpCurrent}/{maxHp}</span>} />
-          <Stat label="Init" value={(derived?.initiative ?? 0) >= 0 ? `+${derived?.initiative ?? 0}` : derived?.initiative ?? 0} />
-          <Stat label="Speed" value={derived?.speed ?? '—'} />
-          <Stat label="Prof" value={derived?.totalLevel ? `+${proficiencyBonus(derived.totalLevel)}` : '—'} />
+          <Stat label="Init" value={(activeDerived?.initiative ?? 0) >= 0 ? `+${activeDerived?.initiative ?? 0}` : activeDerived?.initiative ?? 0} />
+          <Stat label="Speed" value={activeDerived?.speed ?? '—'} />
+          <Stat label="Prof" value={activeDerived?.totalLevel ? `+${proficiencyBonus(activeDerived.totalLevel)}` : '—'} />
         </div>
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <button onClick={shortRest} style={btn}>Short Rest</button>
           <button onClick={longRest} style={btn}>Long Rest</button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: '.5px', color: '#64748b' }}>Layout</span>
+            {[1,2,3].map(n => (
+              <button
+                key={n}
+                onClick={() => setColCount(n as 1|2|3)}
+                style={n === colCount ? primaryBtn : btn}
+              >{n} col{n>1?'s':''}</button>
+            ))}
+          </div>
         </div>
       </header>
-
-      <section style={card()}>
+      {/* Sections Grid */}
+      <div style={{ display: 'grid', gap: 20, gridTemplateColumns: `repeat(${colCount}, minmax(320px, 1fr))` }}>
+  <section style={card()}>
         <h3 style={h3()}>Hit Points</h3>
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -200,7 +279,7 @@ export function CharacterSheet(props: { character?: BuilderState; derived?: any 
         </div>
       </section>
 
-      <section style={card()}>
+  <section style={card()}>
         <h3 style={h3()}>Abilities & Saves</h3>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(90px, 1fr))', gap: 12 }}>
           {(['str','dex','con','int','wis','cha'] as AbilityKey[]).map(ab => (
@@ -208,30 +287,29 @@ export function CharacterSheet(props: { character?: BuilderState; derived?: any 
               <div style={{ fontSize: 12, letterSpacing: '.5px', fontWeight: 600 }}>{ab.toUpperCase()}</div>
               <div style={{ fontSize: 20, fontWeight: 700 }}>{abilitiesFinal[ab]}</div>
               <div style={{ fontSize: 12, fontWeight: 600, color: '#64748b' }}>{mod(abilitiesFinal[ab]) >= 0 ? '+'+mod(abilitiesFinal[ab]) : mod(abilitiesFinal[ab])}</div>
-              <div style={{ fontSize: 11, marginTop: 2 }}>Save {formatBonus(derived?.saves?.[ab] ?? 0)}</div>
+               <div style={{ fontSize: 11, marginTop: 2 }}>Save {formatBonus(activeDerived?.saves?.[ab] ?? 0)}</div>
             </div>
           ))}
         </div>
       </section>
+      <AttackOptionsSection character={activeCharacter} derived={activeDerived} sheet={sheet} abilitiesFinal={abilitiesFinal} />
 
-  <AttackOptionsSection character={character} derived={derived} sheet={sheet} abilitiesFinal={abilitiesFinal} />
-
-      {(sheet.rageRemaining || derived?.rageUses) && (
+  {(sheet.rageRemaining || activeDerived?.rageUses) && (
         <section style={card()}>
           <h3 style={h3()}>Rage</h3>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <div>Remaining: <b>{sheet.rageRemaining === 'unlimited' ? '∞' : sheet.rageRemaining}</b> / {derived?.rageUses === 'unlimited' ? '∞' : derived?.rageUses}</div>
-            {sheet.rageRemaining !== 'unlimited' && typeof sheet.rageRemaining === 'number' && (
+    <div>Remaining: <b>{sheet.rageRemaining === 'unlimited' ? '∞' : sheet.rageRemaining}</b> / {activeDerived?.rageUses === 'unlimited' ? '∞' : activeDerived?.rageUses}</div>
+    {sheet.rageRemaining !== 'unlimited' && typeof sheet.rageRemaining === 'number' && (
               <>
                 <button style={btn} onClick={() => adjustRage(-1)} disabled={sheet.rageRemaining <= 0}>Spend</button>
-                <button style={btn} onClick={() => adjustRage(+1)} disabled={sheet.rageRemaining >= (derived?.rageUses||0)}>+1</button>
+        <button style={btn} onClick={() => adjustRage(+1)} disabled={sheet.rageRemaining >= (activeDerived?.rageUses||0)}>+1</button>
               </>
             )}
           </div>
         </section>
       )}
 
-      {sheet.spellSlots && Object.keys(sheet.spellSlots).length > 0 && (
+  {sheet.spellSlots && Object.keys(sheet.spellSlots).length > 0 && (
         <section style={card()}>
           <h3 style={h3()}>Spell Slots</h3>
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
@@ -247,20 +325,20 @@ export function CharacterSheet(props: { character?: BuilderState; derived?: any 
         </section>
       )}
 
-      <section style={card()}>
+  <section style={card()}>
         <h3 style={h3()}>Custom Resources</h3>
         <CustomResources sheet={sheet} addCustom={addCustom} updateCustom={updateCustom} resetCustom={resetCustom} removeCustom={removeCustom} />
       </section>
 
-      <section style={card()}>
+    <section style={card()}>
         <h3 style={h3()}>Actions / Features</h3>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <div style={{ fontSize: 12, fontWeight: 600, color: '#64748b' }}>Subactions</div>
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-              {(derived?.subactions || []).map((s: string) => <span key={s} style={pill}>{s}</span>)}
-              {(!derived?.subactions || !derived.subactions.length) && <span style={{ fontSize: 12, opacity: 0.6 }}>None</span>}
+        {(activeDerived?.subactions || []).map((s: string) => <span key={s} style={pill}>{s}</span>)}
+        {(!activeDerived?.subactions || !activeDerived.subactions.length) && <span style={{ fontSize: 12, opacity: 0.6 }}>None</span>}
             </div>
-          <FeaturesList character={character} />
+      <FeaturesList character={activeCharacter} />
         </div>
       </section>
 
@@ -284,6 +362,46 @@ export function CharacterSheet(props: { character?: BuilderState; derived?: any 
           {log.length === 0 && <li style={{ fontSize: 12, opacity: 0.6 }}>No rolls yet.</li>}
         </ol>
       </section>
+      {/* Loadout Manager */}
+      {activeCharacter && (
+        <section style={card()}>
+          <h3 style={h3()}>Loadout Manager</h3>
+          <LoadoutManager character={activeCharacter} onChange={c => onCharacterChange && onCharacterChange(c)} />
+        </section>
+      )}
+      {/* Armor Class Formulas (conditional) */}
+      {Array.isArray(activeDerived?.acFormulas) && activeDerived.acFormulas.some((f: any) => !f.conditionMet || f.label.toLowerCase().includes('unarmored')) && (
+        <section style={card()}>
+          <h3 style={h3()}>Armor Class Formulas</h3>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+              <thead>
+                <tr style={{ background: 'var(--card-bg-alt, #f1f5f9)' }}>
+                  <th style={atkTh}>Source</th>
+                  <th style={atkTh}>Formula</th>
+                  <th style={atkTh}>Result</th>
+                  <th style={atkTh}>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {activeDerived.acFormulas.map((f: any, i: number) => {
+                  const active = f.value === activeDerived.ac && f.conditionMet
+                  return (
+                    <tr key={i} style={{ borderTop: '1px solid var(--muted-border)', background: active ? 'rgba(34,197,94,0.12)' : undefined, opacity: f.conditionMet === false ? 0.6 : 1 }}>
+                      <td style={atkTd} title={f.detail}>{f.label}</td>
+                      <td style={atkTd}>{f.detail}</td>
+                      <td style={atkTd}>{f.value}</td>
+                      <td style={atkTd}>{active ? 'Active' : (f.conditionMet === false ? (f.inactiveDetail || 'Unavailable') : 'Inactive')}</td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+          <div style={{ fontSize: 11, opacity: 0.7, marginTop: 6 }}>Inactive rows show formulas requiring different equipment conditions.</div>
+        </section>
+      )}
+      </div>{/* end sections grid */}
     </div>
   )
 }
@@ -515,6 +633,9 @@ function AttackOptionsSection(props: { character: BuilderState; derived: any; sh
   const [targetAC, setTargetAC] = useState<number>(15)
   const [advMode, setAdvMode] = useState<'normal' | 'adv' | 'dis'>('normal')
   const [includeRage, setIncludeRage] = useState<boolean>(false)
+  const [includeSmite, setIncludeSmite] = useState<boolean>(false)
+  const [smiteDice, setSmiteDice] = useState<number>(2) // number of d8s to add on hit
+  const [includeBardic, setIncludeBardic] = useState<boolean>(false)
 
   // Auto-enable rage toggle if character has rage remaining and not already toggled when section mounts
   useEffect(() => {
@@ -526,6 +647,18 @@ function AttackOptionsSection(props: { character: BuilderState; derived: any; sh
 
   const prof = derived?.totalLevel ? proficiencyBonus(derived.totalLevel) : 0
   const rageBonus = includeRage && derived?.rageDamageBonus && sheet.rageRemaining ? derived.rageDamageBonus : 0
+  // Class level lookups (simple aggregation)
+  const paladinLevel = character.classes?.filter(c => c.klass.id === 'paladin').reduce((s,c)=>s+(c.level||0),0) || 0
+  const bardLevel = character.classes?.filter(c => c.klass.id === 'bard').reduce((s,c)=>s+(c.level||0),0) || 0
+  // Bardic Inspiration die size by level (approximate core 5e progression)
+  let bardDie: number | null = null
+  if (bardLevel > 0) {
+    if (bardLevel >= 15) bardDie = 12
+    else if (bardLevel >= 10) bardDie = 10
+    else if (bardLevel >= 5) bardDie = 8
+    else bardDie = 6
+  }
+  const bardicHitBonusAvg = includeBardic && bardDie ? (bardDie + 1) / 2 : 0 // simplified: unconditional average added to attack bonus
 
   const options: AttackOption[] = useMemo(() => {
     if (!character?.loadout) return []
@@ -538,7 +671,7 @@ function AttackOptionsSection(props: { character: BuilderState; derived: any; sh
       if (tags.includes('ranged')) ability = 'dex'
       else if (tags.includes('finesse')) ability = (abilitiesFinal.dex >= abilitiesFinal.str ? 'dex' : 'str')
       const abilityMod = mod(abilitiesFinal[ability])
-      const attackBonus = abilityMod + prof // assume proficiency; could refine later
+      const attackBonus = abilityMod + prof + bardicHitBonusAvg // assume proficiency; bardic inspiration avg if toggled
       // Parse damage dice (e.g., "2d6 slashing")
       const diceMatch = weapon.dmg.match(/(\d*)d(\d+)/i)
       let diceCount = 1, diceSides = 6
@@ -547,8 +680,13 @@ function AttackOptionsSection(props: { character: BuilderState; derived: any; sh
         diceSides = Number(diceMatch[2])
       }
       const avgDice = diceCount * (diceSides + 1) / 2
-      const avgNormal = avgDice + abilityMod + rageBonus
-      const avgCrit = avgDice * 2 + abilityMod + rageBonus
+      // Smite only applies to melee weapon attacks; model as extra radiant dice on hit (double on crit)
+      const melee = !tags.includes('ranged')
+      const smiteDiceCount = (includeSmite && paladinLevel > 0 && melee) ? smiteDice : 0
+      const smiteNormal = smiteDiceCount * 4.5
+      const smiteCrit = smiteDiceCount * 9
+      const avgNormal = avgDice + abilityMod + rageBonus + smiteNormal
+      const avgCrit = avgDice * 2 + abilityMod + rageBonus + smiteCrit
       const hitChanceBase = chanceToHit(attackBonus, targetAC)
       const hitChance = applyAdvantageMode(hitChanceBase, advMode)
       const critChance = 0.05 // simplified
@@ -564,13 +702,18 @@ function AttackOptionsSection(props: { character: BuilderState; derived: any; sh
         avgCrit: round2(avgCrit),
         hitChance: hitChance,
         expected: round2(expected),
-        notes: ability.toUpperCase() + (rageBonus ? ' +Rage' : '')
+        notes: [
+          ability.toUpperCase(),
+          rageBonus ? 'Rage' : null,
+          smiteDiceCount ? `Smite ${smiteDiceCount}d8` : null,
+          bardicHitBonusAvg ? `+BI≈${round2(bardicHitBonusAvg)} hit` : null
+        ].filter(Boolean).join(' + ')
       })
     })
     // Sort by expected descending
     out.sort((a,b)=> b.expected - a.expected)
     return out
-  }, [character, abilitiesFinal, prof, targetAC, advMode, rageBonus])
+  }, [character, abilitiesFinal, prof, targetAC, advMode, rageBonus, includeSmite, smiteDice, paladinLevel, bardicHitBonusAvg])
 
   if (!character?.loadout?.some(i => i.type === 'weapon')) return null
 
@@ -589,6 +732,21 @@ function AttackOptionsSection(props: { character: BuilderState; derived: any; sh
         {typeof sheet.rageRemaining !== 'undefined' && (
           <label style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}>
             <input type="checkbox" checked={includeRage} onChange={e=> setIncludeRage(e.target.checked)} /> Include Rage Damage
+          </label>
+        )}
+        {paladinLevel > 0 && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <input type="checkbox" checked={includeSmite} onChange={e=> setIncludeSmite(e.target.checked)} /> Smite
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 4, opacity: includeSmite ? 1 : 0.5 }}>
+              d8s <input type="number" min={0} max={5} value={smiteDice} disabled={!includeSmite} onChange={e=> setSmiteDice(Math.max(0, Math.min(5, Number(e.target.value)||0)))} style={{ ...input(), width: 50, padding: '2px 4px' }} />
+            </label>
+          </div>
+        )}
+        {bardLevel > 0 && bardDie && (
+          <label style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}>
+            <input type="checkbox" checked={includeBardic} onChange={e=> setIncludeBardic(e.target.checked)} /> Bardic Insp. (≈+{((bardDie+1)/2).toFixed(1)} hit)
           </label>
         )}
         <div style={{ fontSize: 11, opacity: 0.7 }}>Estimates ignore special fighting styles & feats (future enhancement).</div>
@@ -645,3 +803,50 @@ function round2(v: number) { return Math.round(v * 100) / 100 }
 
 const atkTh: React.CSSProperties = { padding: '6px 8px', textAlign: 'left', fontWeight: 600, fontSize: 11, letterSpacing: 0.5, textTransform: 'uppercase', borderLeft: '1px solid var(--muted-border)', whiteSpace: 'nowrap' }
 const atkTd: React.CSSProperties = { padding: '6px 8px', textAlign: 'center', fontSize: 12 }
+
+// ---------------- Loadout Manager ----------------
+function LoadoutManager({ character, onChange }: { character: BuilderState; onChange: (c: BuilderState) => void }) {
+  const [filter, setFilter] = useState('')
+  const equip = character.loadout
+  const handsUsed = equip.reduce((s,i:any)=> s + (typeof i.hands==='number'? i.hands:0),0)
+  const armor = equip.find(i=>i.type==='armor')
+  const shield = equip.find(i=>i.type==='shield')
+  const filtered = useMemo(() => EQUIPMENT.filter(e => e.name.toLowerCase().includes(filter.toLowerCase())), [filter])
+  const addItem = (id: string) => {
+    const item = EQUIPMENT.find(e => e.id === id)
+    if (!item) return
+    // Only one armor & one shield constraint
+    if (item.type==='armor' && armor) return
+    if (item.type==='shield' && shield) return
+    const next: BuilderState = { ...character, loadout: [...character.loadout, item] }
+    onChange(next)
+  }
+  const removeItem = (idx: number) => {
+    const next: BuilderState = { ...character, loadout: character.loadout.filter((_,i)=> i!==idx) }
+    onChange(next)
+  }
+  return (
+    <div style={{ display: 'grid', gap: 10 }}>
+      <div style={{ fontSize: 12, color: '#64748b' }}>Hands Used: {handsUsed} / 2</div>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        {equip.map((i,idx) => (
+          <div key={idx} style={{ display: 'flex', gap: 4, alignItems: 'center', border: '1px solid var(--muted-border)', padding: '4px 6px', borderRadius: 6, fontSize: 12 }}>
+            <span>{i.name}</span>
+            <button style={btn} onClick={() => removeItem(idx)} title="Remove">×</button>
+          </div>
+        ))}
+        {equip.length===0 && <div style={{ fontSize: 12, opacity: 0.6 }}>No items equipped.</div>}
+      </div>
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+        <input value={filter} onChange={e=> setFilter(e.target.value)} placeholder="Search" style={input()} />
+        <select onChange={e => { if (e.target.value) { addItem(e.target.value); e.target.value='' } }} style={input()} value="">
+          <option value="">Add Item…</option>
+          {filtered.map(e => (
+            <option key={e.id} value={e.id}>{e.name}</option>
+          ))}
+        </select>
+      </div>
+      <div style={{ fontSize: 11, opacity: 0.7 }}>Auto‑recomputes AC & derived stats. One armor & shield enforced. Barbarian/Monk formulas adjust when armor/shield removed.</div>
+    </div>
+  )
+}

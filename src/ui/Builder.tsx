@@ -757,7 +757,7 @@ function validateChoice(state: AppState, opts?: RuleOpts): Issue[] {
 
 // ---------------- Derived & Simulation ----------------
 
-function computeDerived(state: AppState, opts?: RuleOpts) {
+export function computeDerived(state: AppState, opts?: RuleOpts) {
   // Use final abilities including race ASIs and allocated ASIs
   const fa = finalAbility(state.abilities, state.race, state.asi, opts)
   const dexMod = mod(fa.dex)
@@ -770,15 +770,62 @@ function computeDerived(state: AppState, opts?: RuleOpts) {
   const rawTotal = state.classes.reduce((s, c) => s + (c.level || 0), 0)
   const totalLevel = state.classes.length ? rawTotal : 0
 
-  let ac = 10 + dexMod
+  const acFormulas: Array<{ label: string; value: number; detail: string; conditionMet?: boolean; inactiveDetail?: string }> = []
+  // Base: Unarmored (generic) 10 + DEX (always available)
+  const baseUnarmored = 10 + dexMod
+  acFormulas.push({ label: 'Base (Unarmored)', value: baseUnarmored, detail: '10 + DEX', conditionMet: !armor })
+  let ac = baseUnarmored
   if (armor) {
     const dexCap = typeof armor.dexMax === 'number' ? armor.dexMax : Infinity
-    ac = armor.ac + clamp(dexMod, -Infinity, dexCap)
+    const armored = armor.ac + clamp(dexMod, -Infinity, dexCap)
+    acFormulas.push({ label: `Armor (${armor.name})`, value: armored, detail: `${armor.ac} + DEX${isFinite(dexCap) ? ` (max ${dexCap})` : ''}`, conditionMet: true })
+    ac = armored
   }
-  if (!armor && state.classes.some((c) => c.klass.id === 'barbarian')) {
-    ac = 10 + dexMod + conMod
+  const hasBarbarianClass = state.classes.some((c) => c.klass.id === 'barbarian')
+  if (hasBarbarianClass) {
+    const barb = 10 + dexMod + conMod
+    const cond = !armor // barbarian UD requires no armor; shield allowed
+    acFormulas.push({ label: 'Unarmored Defense (Barbarian)', value: barb + (shield ? (shield.ac ?? 2) : 0), detail: '10 + DEX + CON (+Shield if any)', conditionMet: cond, inactiveDetail: cond ? undefined : 'Remove armor to apply' })
+    if (cond) ac = Math.max(ac, barb + (shield ? (shield.ac ?? 2) : 0))
   }
-  if (shield) ac += shield.ac ?? 2
+  const hasMonkClass = state.classes.some(c => c.klass.id === 'monk')
+  if (hasMonkClass) {
+    const wisMod = mod(fa.wis)
+    const monkBase = 10 + dexMod + wisMod
+    const cond = !armor && !shield // monk UD requires no armor AND no shield
+    acFormulas.push({ label: 'Unarmored Defense (Monk)', value: monkBase, detail: '10 + DEX + WIS (no armor or shield)', conditionMet: cond, inactiveDetail: cond ? undefined : 'Remove armor & shield to apply' })
+    if (cond) ac = Math.max(ac, monkBase)
+  }
+  // Fighting Style: Defense (+1 while wearing armor)
+  let defenseActive = false
+  if (armor && state.classFeatureChoices) {
+    // Check any class that could have selected fighting-style
+    Object.entries(state.classFeatureChoices).forEach(([klassId, choices]) => {
+      const fs = choices['fighting-style']
+      const selected: string[] = Array.isArray(fs) ? fs as string[] : fs ? [fs as string] : []
+      if (selected.includes('defense')) defenseActive = true
+    })
+  }
+  if (state.classFeatureChoices) {
+    const hasDefenseStyle = Object.values(state.classFeatureChoices).some(ch => {
+      const fs = ch['fighting-style']
+      const arr = Array.isArray(fs) ? fs : fs ? [fs] : []
+      return arr.includes('defense')
+    })
+    if (hasDefenseStyle) {
+      const cond = !!armor
+      const val = ac + (cond ? 1 : 0)
+      acFormulas.push({ label: 'Defense Style', value: cond ? val : (armor ? ac + 1 : ac + 1), detail: '+1 AC while wearing armor', conditionMet: cond, inactiveDetail: cond ? undefined : 'Requires armor' })
+      if (cond) ac = val
+    }
+  }
+  if (shield) {
+    // Shield represented as its own additive line only if not already baked into a class formula entry
+    acFormulas.push({ label: 'Shield', value: ac + (shield.ac ?? 2), detail: `+${shield.ac ?? 2} AC (shield)`, conditionMet: true })
+    ac += shield.ac ?? 2
+  }
+  // Record best formula highlight by sorting
+  acFormulas.sort((a,b) => b.value - a.value)
 
   // HP: base at first level from the first selected class, then average per-level per class
   let hp = 0
@@ -847,7 +894,7 @@ function computeDerived(state: AppState, opts?: RuleOpts) {
 
   // Initiative (DEX mod plus Alert +5)
   const initiative = dexMod + ((state.feats || []).includes('alert') ? 5 : 0)
-  return { ac, hp, speed, subactions, dexMod, conMod, strMod, saves, saveProfs, totalLevel, initiative, rageUses, rageDamageBonus, barbarianLevel }
+  return { ac, hp, speed, subactions, dexMod, conMod, strMod, saves, saveProfs, totalLevel, initiative, rageUses, rageDamageBonus, barbarianLevel, acFormulas }
 }
 
 // Basic proficiency inference (simplified 5e defaults)
@@ -925,7 +972,7 @@ function StatBadge({ label, value }: { label: string; value: React.ReactNode }) 
 
 export type AppState = {
   name: string
-  race: Race
+  race?: Race
   classes: Array<{ klass: Klass; level: number; subclass?: Subclass }>
   abilities: Record<AbilityKey, number>
   loadout: Equipment[]
@@ -939,6 +986,8 @@ export type AppState = {
   asi?: Record<AbilityKey, number>
   feats?: string[] // feat ids
   featChoices?: Record<string, any>
+  // Chosen class feature options (e.g., fighting style selections)
+  classFeatureChoices?: Record<string, Record<string, string | string[]>>
 }
 
 // Branch selector component (placed above Builder to avoid redeclaration on renders)
@@ -1041,7 +1090,7 @@ function BranchProgressionSelector(props: { characterName?: string; currentClass
 export function Builder(props: { onCharacterChange?: (state: AppState, derived?: any) => void; importPlan?: any }) {
   const [mode, setMode] = useState<'guided' | 'power'>('power')
   const [name, setName] = useState('New Hero')
-  const [race, setRace] = useState<Race>(RACES[0])
+  const [race, setRace] = useState<Race | undefined>(undefined)
   const [classes, setClasses] = useState<Array<{ klass: Klass; level: number; subclass?: Subclass }>>([])
   // Chronological record of each level pick in order pressed (stores class ids in sequence)
   const [classLevelOrder, setClassLevelOrder] = useState<string[]>([])
@@ -1065,7 +1114,7 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
   const [abilities, setAbilities] = useState<Record<AbilityKey, number>>({ str: 15, dex: 14, con: 14, int: 10, wis: 10, cha: 8 })
   const [loadout, setLoadout] = useState<Equipment[]>([EQUIPMENT[0], EQUIPMENT[1]]) // greataxe + shield
   // Background selection
-  const [background, setBackground] = useState<Background | undefined>(BACKGROUNDS[0])
+  const [background, setBackground] = useState<Background | undefined>(undefined)
   // Skills proficiency & sorting state
   type ProfType = 'none' | 'half' | 'prof' | 'expert'
   const [skillProf, setSkillProf] = useState<Record<string, ProfType>>({})
@@ -1107,6 +1156,8 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
   const [importedPlanSequence, setImportedPlanSequence] = useState<Array<{ klass: Klass; subclass?: Subclass; future?: boolean }>>([])
   // When true, temporarily suppress automatic reconciliation of classes from importedPlanSequence (e.g. right after Apply).
   const [suppressPlanReconcile, setSuppressPlanReconcile] = useState(false)
+  // When true (set by Reset), ignore passive plan import effects until user resumes (prevents Barbarian 1 auto re-add).
+  const [planImportSuspended, setPlanImportSuspended] = useState(false)
   // Debug flag
   const debugPlanSync = true
   // Reconcile aggregated class levels with present (non-future) entries of imported plan
@@ -1284,6 +1335,7 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
     asi: asiAlloc,
   feats: selectedFeats,
   featChoices,
+  classFeatureChoices,
   }
   const derived = useMemo(() => computeDerived(state, { tceActive: tceCustomAsi, tceMode, tceAlloc }), [state, tceCustomAsi, tceMode, JSON.stringify(tceAlloc)])
   // Manual HP lifted state
@@ -1421,9 +1473,8 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
     setSkillProf(prev => {
       const out: Record<string, ProfType> = { ...prev }
       bgSkills.concat(raceSkills).forEach(skill => {
-        if (skillSourcesRef.current[skill]) {
-          out[skill] = prev[skill] && prev[skill] !== 'none' ? prev[skill] : 'prof'
-        }
+  // Background/race skills should always grant at least normal proficiency.
+  out[skill] = prev[skill] && prev[skill] !== 'none' ? prev[skill] : 'prof'
       })
       return out
     })
@@ -1503,6 +1554,22 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
       return changed ? out : prev
     })
   }, [selectedFeats, JSON.stringify(featChoices.skilledSkills)])
+
+  // Global cleanup: ensure every recorded proficiency has at least one active source.
+  // This guarantees that removing a background/race/feat/class source actually drops the skill from the list.
+  useEffect(() => {
+    setSkillProf(prev => {
+      let changed = false
+      const next: Record<string, ProfType> = { ...prev }
+      Object.keys(prev).forEach(skillId => {
+        if (!skillSources[skillId] || skillSources[skillId].length === 0) {
+          delete next[skillId]
+          changed = true
+        }
+      })
+      return changed ? next : prev
+    })
+  }, [skillSources])
 
   // Helpers to add/remove sources with proficiency updates
   function addSkillSource(skillId: string, source: string) {
@@ -1754,6 +1821,79 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
       try { console.error(e) } catch {}
       window.alert('Failed to export JSON.')
     }
+  }
+
+  // ---------- Named Draft Saves ----------
+  type DraftMeta = { key: string; label: string; ts: number }
+  const [drafts, setDrafts] = useState<DraftMeta[]>([])
+  const [selectedDraftKey, setSelectedDraftKey] = useState<string>('')
+  const draftsIndexKey = useMemo(() => `characterBuilder.draftsIndex.v1:${name || 'default'}`,[name])
+
+  // Load drafts index when character name changes
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(draftsIndexKey)
+      if (raw) {
+        const parsed = JSON.parse(raw)
+        if (Array.isArray(parsed)) {
+          const cleaned = parsed.filter((d:any)=>d && typeof d.key === 'string' && typeof d.label === 'string')
+          cleaned.sort((a:DraftMeta,b:DraftMeta)=> b.ts - a.ts)
+          setDrafts(cleaned)
+          if (cleaned.length && !cleaned.find(d=>d.key===selectedDraftKey)) setSelectedDraftKey(cleaned[0].key)
+          return
+        }
+      }
+      setDrafts([])
+      setSelectedDraftKey('')
+    } catch { setDrafts([]); setSelectedDraftKey('') }
+  }, [draftsIndexKey])
+
+  function persistDraftsIndex(next: DraftMeta[]) {
+    try { localStorage.setItem(draftsIndexKey, JSON.stringify(next)) } catch {}
+  }
+
+  function saveNamedDraft() {
+    const defaultLabel = new Date().toLocaleString()
+    const label = window.prompt('Draft name:', defaultLabel)?.trim()
+    if (!label) return
+    try {
+      const payload = buildExportPayload()
+      const ts = Date.now()
+      const key = `characterBuilder.draft.v1:${name||'default'}:${ts}`
+      const wrapper = { label, ts, payload }
+      localStorage.setItem(key, JSON.stringify(wrapper))
+      const next = [{ key, label, ts }, ...drafts.filter(d=>d.key!==key)]
+      setDrafts(next)
+      setSelectedDraftKey(key)
+      persistDraftsIndex(next)
+    } catch { window.alert('Failed to save draft.') }
+  }
+
+  function loadDraft(key: string) {
+    if (!key) return
+    try {
+      const raw = localStorage.getItem(key)
+      if (!raw) return window.alert('Draft not found.')
+      const parsed = JSON.parse(raw)
+      if (parsed && parsed.payload) {
+        const confirmReplace = window.confirm('Load this draft? Unsaved changes will be overwritten.')
+        if (!confirmReplace) return
+        importFromObject(parsed.payload)
+        window.alert('Draft loaded.')
+      }
+    } catch { window.alert('Failed to load draft.') }
+  }
+
+  function deleteDraft(key: string) {
+    if (!key) return
+    const meta = drafts.find(d=>d.key===key)
+    const ok = window.confirm(`Delete draft "${meta?.label||'draft'}"? This cannot be undone.`)
+    if (!ok) return
+    try { localStorage.removeItem(key) } catch {}
+    const next = drafts.filter(d=>d.key!==key)
+    setDrafts(next)
+    if (selectedDraftKey === key) setSelectedDraftKey(next[0]?.key || '')
+    persistDraftsIndex(next)
   }
 
   function importFromObject(obj: any) {
@@ -2060,6 +2200,7 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
   useEffect(() => {
     const plan = props.importPlan as any
     if (!plan) return
+  if (planImportSuspended) { if (debugPlanSync) console.log('[PlanSync] import ignored (suspended)'); return }
     const ts = typeof plan._ts === 'number' ? plan._ts : Date.now()
     if (lastImportTsHandled && ts === lastImportTsHandled) return
     try {
@@ -2132,24 +2273,29 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
                 const del: string[] = []
                 for (let i = 0; i < localStorage.length; i++) {
                   const k = localStorage.key(i) || ''
-                  if (k.startsWith('progressionPlanner.v1:') || k.startsWith('progressionPlanner.activeRoot.v1:')) del.push(k)
+                  // Remove any progression planner related keys to avoid passive re-import repopulating a default class
+                  if (k.startsWith('progressionPlanner.v1:') || k.startsWith('progressionPlanner.activeRoot.v1:') || k.includes('progressionPlanner.')) del.push(k)
                 }
                 del.forEach(k => localStorage.removeItem(k))
               } catch {}
               // Reset core state to defaults
               setMode('power')
               setName('New Hero')
-              setRace(RACES[0])
+              setRace(undefined)
               setClasses([])
               // Reset chronological level history and any imported plan so progression table reflects fresh state
               setClassLevelOrder([])
               setImportedPlanSequence([])
               setPendingPassivePlan(null)
               setLastImportTsHandled(null)
+              // Prevent immediate plan reconcile from re-adding a class after reset
+              setSuppressPlanReconcile(true)
+              // Suspend passive plan imports until user opts back in
+              setPlanImportSuspended(true)
               setShowFullProgression(false)
-              setAbilities({ str: 15, dex: 14, con: 14, int: 10, wis: 10, cha: 8 })
-              setLoadout([EQUIPMENT[0], EQUIPMENT[1]])
-              setBackground(BACKGROUNDS[0])
+              setAbilities({ str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 })
+              setLoadout([])
+              setBackground(undefined)
               setSkillProf({})
               setSkillSources({})
               setSkillTab('list')
@@ -2174,7 +2320,16 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
   // Rules reset moved to global rules context
             }}
           >Reset Character</Button>
-          <Button size="sm" onClick={snapshot}><Settings2 size={16} style={{ marginRight: 6 }} />Save Draft</Button>
+          <Button size="sm" onClick={saveNamedDraft}><Settings2 size={16} style={{ marginRight: 6 }} />Save Draft</Button>
+          {drafts.length ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <select value={selectedDraftKey} onChange={e=> setSelectedDraftKey(e.target.value)} style={{ fontSize: 12, padding: '4px 6px', borderRadius: 6, border: '1px solid #cbd5e1', background: 'white' }}>
+                {drafts.map(d => <option key={d.key} value={d.key}>{d.label}</option>)}
+              </select>
+              <Button size="sm" variant="outline" onClick={()=> loadDraft(selectedDraftKey)} disabled={!selectedDraftKey}>Load</Button>
+              <Button size="sm" variant="outline" onClick={()=> deleteDraft(selectedDraftKey)} disabled={!selectedDraftKey}>Delete</Button>
+            </div>
+          ) : null}
           <Button size="sm" variant="outline" onClick={exportToFile}>Export JSON</Button>
           <input ref={importInputRef} type="file" accept="application/json" style={{ display: 'none' }} onChange={onImportFileSelected} />
           <Button size="sm" variant="outline" onClick={() => importInputRef.current?.click()}>Import JSON</Button>
@@ -2198,7 +2353,7 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
 
                 {/* Race (col 2) */}
                 <Labeled label="Race">
-                  <RaceSelector value={race} onChange={setRace} />
+                  <RaceSelector value={race} onChange={setRace} allowNone />
                 </Labeled>
                 {customOrigin ? (
                   <div style={{ gridColumn: '1 / -1', marginTop: -4 }}>
@@ -2226,13 +2381,7 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
 
                 {/* Background (col 3) */}
                 <Labeled label="Background">
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                    {BACKGROUNDS.map((bg) => (
-                      <Button key={bg.id} size="sm" variant={background?.id === bg.id ? 'default' : 'outline'} onClick={() => setBackground(bg)}>
-                        {bg.name}
-                      </Button>
-                    ))}
-                  </div>
+                  <BackgroundSelector value={background} onChange={setBackground} allowNone />
                 </Labeled>
 
                 {/* Classes & Level manager (full width) */}
@@ -2259,7 +2408,7 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
           <Card>
             <CardHeader><CardTitle><Scale size={16} style={{ marginRight: 6 }} />Ability Scores</CardTitle></CardHeader>
             <CardContent>
-              <AbilityEditor abilities={abilities} onChange={setAbilities} race={race} asi={asiAlloc} tceActive={tceCustomAsi} tceMode={tceMode} tceAlloc={tceAlloc} saves={derived.saves} saveProfs={derived.saveProfs} primaryClassId={classes[0]?.klass.id} primaryClassName={classes[0]?.klass.name} />
+              <AbilityEditor abilities={abilities} onChange={setAbilities} race={race as any} asi={asiAlloc} tceActive={tceCustomAsi} tceMode={tceMode} tceAlloc={tceAlloc} saves={derived.saves} saveProfs={derived.saveProfs} primaryClassId={classes[0]?.klass.id} primaryClassName={classes[0]?.klass.name} />
             </CardContent>
           </Card>
 
@@ -2298,6 +2447,12 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
                   <CardTitle>Combined Progression</CardTitle>
                 </CardHeader>
                 <CardContent>
+                  {planImportSuspended && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, padding: '6px 8px', border: '1px solid var(--muted-border)', borderRadius: 8, background: 'var(--pill-bg, #f1f5f9)' }}>
+                      <span style={{ fontSize: 11, color: '#475569' }}>Plan imports suspended by Reset.</span>
+                      <Button size="sm" variant="outline" onClick={() => { setPlanImportSuspended(false); setSuppressPlanReconcile(false); }}>Resume</Button>
+                    </div>
+                  )}
                   {/* Branch selector (pull roots from ProgressionPlanner storage) */}
                   <BranchProgressionSelector characterName={name} currentClasses={classes} onSelectSequence={(seq, order) => { setClasses(seq); setClassLevelOrder(order) }} />
                   {renderProgressionTable(
@@ -3232,7 +3387,7 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
               <div style={{ width: '100%', textAlign: 'center', display: 'grid', gap: 4 }}>
                 <div style={{ fontSize: 20, fontWeight: 700, letterSpacing: '.5px' }}>{name && name.trim() ? name : 'Unnamed Character'}</div>
                 <div style={{ fontSize: 11, color: '#64748b', lineHeight: 1 }}>
-                  {race.name}{background ? ` • ${background.name}` : ''}
+                  {race ? race.name : '(No Race)'}{background ? ` • ${background.name}` : ''}
                 </div>
                 {/* Live Summary label removed per request */}
               </div>
@@ -3434,8 +3589,8 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
               <div style={{ display: 'grid', gap: 8, marginTop: 12 }}>
                 <div style={{ fontSize: 12, color: '#64748b' }}>Racial Features</div>
                 <div style={{ display: 'grid', gap: 8, fontSize: 14 }}>
-                  {(race.traits || []).length ? (
-                    (race.traits || []).map((t) => (
+                  {(race?.traits || []).length ? (
+                    (race?.traits || []).map((t) => (
                       <div key={t.id} style={{ padding: 8, borderRadius: 12, border: '1px solid var(--muted-border)', background: 'var(--card-bg)' }}>
                         <div style={{ fontWeight: 600 }}>{t.name}</div>
                         <div style={{ color: '#64748b' }}>{t.text}</div>
@@ -3445,11 +3600,11 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
                     <div style={{ color: '#94a3b8' }}>No racial features.</div>
                   )}
                   {/* Innate racial spells */}
-                  {race.spells?.length ? (
+                  {race?.spells?.length ? (
                     <div style={{ padding: 8, borderRadius: 12, border: '1px solid var(--muted-border)', background: 'var(--card-bg)' }}>
                       <div style={{ fontWeight: 600 }}>Innate Spells</div>
                       <div style={{ color: '#64748b', display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                        {race.spells.map(sid => {
+                        {race?.spells.map(sid => {
                           const sp = SPELLS.find(s => s.id === sid)
                           return <span key={sid} style={{ background: 'var(--muted-bg)', padding: '2px 8px', borderRadius: 999, fontSize: 12 }}>{sp?.name || sid}</span>
                         })}
@@ -3505,7 +3660,7 @@ function Selector<T extends { id: string }>(props: { options: T[]; value: T; onC
   )
 }
 
-function AbilityEditor(props: { abilities: Record<AbilityKey, number>; onChange: (v: Record<AbilityKey, number>) => void; race: Race; asi?: Record<AbilityKey, number>; tceActive?: boolean; tceMode?: '2+1' | '1+1+1'; tceAlloc?: Record<AbilityKey, number>; saves?: Record<AbilityKey, number>; saveProfs?: AbilityKey[]; primaryClassId?: string; primaryClassName?: string }) {
+function AbilityEditor(props: { abilities: Record<AbilityKey, number>; onChange: (v: Record<AbilityKey, number>) => void; race?: Race; asi?: Record<AbilityKey, number>; tceActive?: boolean; tceMode?: '2+1' | '1+1+1'; tceAlloc?: Record<AbilityKey, number>; saves?: Record<AbilityKey, number>; saveProfs?: AbilityKey[]; primaryClassId?: string; primaryClassName?: string }) {
   // Access rule for manual adjustments
   const { manualAbilityAdjust } = useRules()
   const final = finalAbility(props.abilities, props.race, props.asi, { tceActive: props.tceActive, tceMode: props.tceMode, tceAlloc: props.tceAlloc })
@@ -3820,7 +3975,7 @@ function AbilityEditor(props: { abilities: Record<AbilityKey, number>; onChange:
   )
 }
 
-function finalAbility(abilities: Record<AbilityKey, number>, race: Race, asi?: Record<AbilityKey, number>, opts?: RuleOpts): Record<AbilityKey, number> {
+function finalAbility(abilities: Record<AbilityKey, number>, race?: Race, asi?: Record<AbilityKey, number>, opts?: RuleOpts): Record<AbilityKey, number> {
   const out: Record<AbilityKey, number> = { ...{ str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 }, ...abilities }
   if (opts?.tceActive) {
     // Apply flexible TCE allocation instead of race ASIs. Assume alloc already respects mode/budget.
@@ -4221,7 +4376,7 @@ function HPManager({ classes, abils, method, onMethodChange, rolls, setRolls, ma
   )
 }
 
-function RaceSelector(props: { value: Race; onChange: (v: Race) => void }) {
+function RaceSelector(props: { value?: Race; onChange: (v: Race | undefined) => void; allowNone?: boolean }) {
   const [showHumanSubs, setShowHumanSubs] = useState(false)
   const [showElfSubs, setShowElfSubs] = useState(false)
   const [showDwarfSubs, setShowDwarfSubs] = useState(false)
@@ -4263,112 +4418,130 @@ function RaceSelector(props: { value: Race; onChange: (v: Race) => void }) {
     ...Array.from(genasiVariantIds)
   ])
   const others = RACES.filter(r => !excludeIds.has(r.id))
-  const isHumanSelected = props.value.id === 'human' || props.value.id === 'human-variant'
-  const isElfSelected = props.value.id === 'elf-wood' || props.value.id === 'elf-high' || props.value.id === 'elf-drow'
-  const isDwarfSelected = props.value.id === 'dwarf-hill' || props.value.id === 'dwarf-mountain'
-  const isHalflingSelected = props.value.id === 'halfling-lightfoot' || props.value.id === 'halfling-stout'
-  const isDragonSelected = props.value.id === 'dragonborn' || props.value.id.startsWith('dragonborn-')
-  const isTieflingSelected = props.value.id === 'tiefling' || props.value.id.startsWith('tiefling-')
-  const isGenasiSelected = props.value.id.startsWith('genasi-')
-  const isGnomeSelected = props.value.id.startsWith('gnome-')
+  const curId = props.value?.id || ''
+  const isHumanSelected = curId === 'human' || curId === 'human-variant'
+  const isElfSelected = curId === 'elf-wood' || curId === 'elf-high' || curId === 'elf-drow'
+  const isDwarfSelected = curId === 'dwarf-hill' || curId === 'dwarf-mountain'
+  const isHalflingSelected = curId === 'halfling-lightfoot' || curId === 'halfling-stout'
+  const isDragonSelected = curId === 'dragonborn' || curId.startsWith('dragonborn-')
+  const isTieflingSelected = curId === 'tiefling' || curId.startsWith('tiefling-')
+  const isGenasiSelected = curId.startsWith('genasi-')
+  const isGnomeSelected = curId.startsWith('gnome-')
 
   // Need featsEnabled to gate Variant Human (requires feats optional rule)
   const { featsEnabled } = useRules()
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
       {/* Human group button */}
+      {props.allowNone && (
+        <Button size="sm" variant={!props.value ? 'default' : 'outline'} onClick={() => props.onChange(undefined)}>None</Button>
+      )}
       <Button size="sm" variant={isHumanSelected ? 'default' : 'outline'} onClick={() => setShowHumanSubs((v) => !v)}>Human</Button>
       {showHumanSubs && (
         <>
-          <Button size="sm" variant={props.value.id === 'human' ? 'default' : 'outline'} onClick={() => props.onChange(humanBase)} style={subBtnStyle(props.value.id === 'human')}>Base</Button>
+          <Button size="sm" variant={curId === 'human' ? 'default' : 'outline'} onClick={() => props.onChange(humanBase)} style={subBtnStyle(curId === 'human')}>Base</Button>
           {featsEnabled ? (
-            <Button size="sm" variant={props.value.id === 'human-variant' ? 'default' : 'outline'} onClick={() => props.onChange(humanVar)} style={subBtnStyle(props.value.id === 'human-variant')}>Variant</Button>
+            <Button size="sm" variant={curId === 'human-variant' ? 'default' : 'outline'} onClick={() => props.onChange(humanVar)} style={subBtnStyle(curId === 'human-variant')}>Variant</Button>
           ) : null}
         </>
       )}
 
       {/* Elf group button */}
-      <Button size="sm" variant={isElfSelected ? 'default' : 'outline'} onClick={() => setShowElfSubs((v) => !v)}>Elf</Button>
+  <Button size="sm" variant={isElfSelected ? 'default' : 'outline'} onClick={() => setShowElfSubs((v) => !v)}>Elf</Button>
       {showElfSubs && (
         <>
-          <Button size="sm" variant={props.value.id === 'elf-wood' ? 'default' : 'outline'} onClick={() => props.onChange(elfWood)} style={subBtnStyle(props.value.id === 'elf-wood')}>Wood</Button>
-          <Button size="sm" variant={props.value.id === 'elf-high' ? 'default' : 'outline'} onClick={() => props.onChange(elfHigh)} style={subBtnStyle(props.value.id === 'elf-high')}>High</Button>
-          <Button size="sm" variant={props.value.id === 'elf-drow' ? 'default' : 'outline'} onClick={() => props.onChange(elfDrow)} style={subBtnStyle(props.value.id === 'elf-drow')}>Drow</Button>
+          <Button size="sm" variant={curId === 'elf-wood' ? 'default' : 'outline'} onClick={() => props.onChange(elfWood)} style={subBtnStyle(curId === 'elf-wood')}>Wood</Button>
+          <Button size="sm" variant={curId === 'elf-high' ? 'default' : 'outline'} onClick={() => props.onChange(elfHigh)} style={subBtnStyle(curId === 'elf-high')}>High</Button>
+          <Button size="sm" variant={curId === 'elf-drow' ? 'default' : 'outline'} onClick={() => props.onChange(elfDrow)} style={subBtnStyle(curId === 'elf-drow')}>Drow</Button>
         </>
       )}
 
       {/* Dwarf group button */}
-      <Button size="sm" variant={isDwarfSelected ? 'default' : 'outline'} onClick={() => setShowDwarfSubs((v) => !v)}>Dwarf</Button>
+  <Button size="sm" variant={isDwarfSelected ? 'default' : 'outline'} onClick={() => setShowDwarfSubs((v) => !v)}>Dwarf</Button>
       {showDwarfSubs && (
         <>
-          <Button size="sm" variant={props.value.id === 'dwarf-hill' ? 'default' : 'outline'} onClick={() => props.onChange(dwarfHill)} style={subBtnStyle(props.value.id === 'dwarf-hill')}>Hill</Button>
-          <Button size="sm" variant={props.value.id === 'dwarf-mountain' ? 'default' : 'outline'} onClick={() => props.onChange(dwarfMountain)} style={subBtnStyle(props.value.id === 'dwarf-mountain')}>Mountain</Button>
+          <Button size="sm" variant={curId === 'dwarf-hill' ? 'default' : 'outline'} onClick={() => props.onChange(dwarfHill)} style={subBtnStyle(curId === 'dwarf-hill')}>Hill</Button>
+          <Button size="sm" variant={curId === 'dwarf-mountain' ? 'default' : 'outline'} onClick={() => props.onChange(dwarfMountain)} style={subBtnStyle(curId === 'dwarf-mountain')}>Mountain</Button>
         </>
       )}
 
       {/* Halfling group button */}
-      <Button size="sm" variant={isHalflingSelected ? 'default' : 'outline'} onClick={() => setShowHalflingSubs((v) => !v)}>Halfling</Button>
+  <Button size="sm" variant={isHalflingSelected ? 'default' : 'outline'} onClick={() => setShowHalflingSubs((v) => !v)}>Halfling</Button>
       {showHalflingSubs && (
         <>
-          <Button size="sm" variant={props.value.id === 'halfling-lightfoot' ? 'default' : 'outline'} onClick={() => props.onChange(halflingLightfoot)} style={subBtnStyle(props.value.id === 'halfling-lightfoot')}>Lightfoot</Button>
-          <Button size="sm" variant={props.value.id === 'halfling-stout' ? 'default' : 'outline'} onClick={() => props.onChange(halflingStout)} style={subBtnStyle(props.value.id === 'halfling-stout')}>Stout</Button>
+          <Button size="sm" variant={curId === 'halfling-lightfoot' ? 'default' : 'outline'} onClick={() => props.onChange(halflingLightfoot)} style={subBtnStyle(curId === 'halfling-lightfoot')}>Lightfoot</Button>
+          <Button size="sm" variant={curId === 'halfling-stout' ? 'default' : 'outline'} onClick={() => props.onChange(halflingStout)} style={subBtnStyle(curId === 'halfling-stout')}>Stout</Button>
         </>
       )}
 
       {/* Dragonborn group button */}
-      <Button size="sm" variant={isDragonSelected ? 'default' : 'outline'} onClick={() => setShowDragonSubs((v) => !v)}>Dragonborn</Button>
+  <Button size="sm" variant={isDragonSelected ? 'default' : 'outline'} onClick={() => setShowDragonSubs((v) => !v)}>Dragonborn</Button>
       {showDragonSubs && (
         <>
-          <Button size="sm" variant={props.value.id === 'dragonborn' ? 'default' : 'outline'} onClick={() => props.onChange(dragonbornBase)} style={subBtnStyle(props.value.id === 'dragonborn')}>Base</Button>
+          <Button size="sm" variant={curId === 'dragonborn' ? 'default' : 'outline'} onClick={() => props.onChange(dragonbornBase)} style={subBtnStyle(curId === 'dragonborn')}>Base</Button>
           {dragonVariants.map((r) => {
             const label = r.name.replace(/^Dragonborn\s*\(/, '').replace(/\)$/, '')
             return (
-              <Button key={r.id} size="sm" variant={props.value.id === r.id ? 'default' : 'outline'} onClick={() => props.onChange(r)} style={subBtnStyle(props.value.id === r.id)}>{label}</Button>
+              <Button key={r.id} size="sm" variant={curId === r.id ? 'default' : 'outline'} onClick={() => props.onChange(r)} style={subBtnStyle(curId === r.id)}>{label}</Button>
             )
           })}
         </>
       )}
 
       {/* Tiefling group button */}
-      <Button size="sm" variant={isTieflingSelected ? 'default' : 'outline'} onClick={() => setShowTieflingSubs(v => !v)}>Tiefling</Button>
+  <Button size="sm" variant={isTieflingSelected ? 'default' : 'outline'} onClick={() => setShowTieflingSubs(v => !v)}>Tiefling</Button>
       {showTieflingSubs && (
         <>
-          <Button size="sm" variant={props.value.id === 'tiefling' ? 'default' : 'outline'} onClick={() => props.onChange(tieflingBase)} style={subBtnStyle(props.value.id === 'tiefling')}>Base</Button>
+          <Button size="sm" variant={curId === 'tiefling' ? 'default' : 'outline'} onClick={() => props.onChange(tieflingBase)} style={subBtnStyle(curId === 'tiefling')}>Base</Button>
           {tieflingVariants.map(r => {
             const label = r.name.replace(/^Tiefling\s*\(/, '').replace(/\)$/, '')
             return (
-              <Button key={r.id} size="sm" variant={props.value.id === r.id ? 'default' : 'outline'} onClick={() => props.onChange(r)} style={subBtnStyle(props.value.id === r.id)}>{label}</Button>
+              <Button key={r.id} size="sm" variant={curId === r.id ? 'default' : 'outline'} onClick={() => props.onChange(r)} style={subBtnStyle(curId === r.id)}>{label}</Button>
             )
           })}
         </>
       )}
 
   {/* Genasi group button */}
-      <Button size="sm" variant={isGenasiSelected ? 'default' : 'outline'} onClick={() => setShowGenasiSubs(v => !v)}>Genasi</Button>
+  <Button size="sm" variant={isGenasiSelected ? 'default' : 'outline'} onClick={() => setShowGenasiSubs(v => !v)}>Genasi</Button>
       {showGenasiSubs && (
         <>
           {genasiVariants.map(r => {
             const label = r.name.replace(/^Genasi\s*\(/, '').replace(/\)$/, '')
             return (
-              <Button key={r.id} size="sm" variant={props.value.id === r.id ? 'default' : 'outline'} onClick={() => props.onChange(r)} style={subBtnStyle(props.value.id === r.id)}>{label}</Button>
+              <Button key={r.id} size="sm" variant={curId === r.id ? 'default' : 'outline'} onClick={() => props.onChange(r)} style={subBtnStyle(curId === r.id)}>{label}</Button>
             )
           })}
         </>
       )}
 
       {/* Gnome group button */}
-      <Button size="sm" variant={isGnomeSelected ? 'default' : 'outline'} onClick={() => setShowGnomeSubs(v => !v)}>Gnome</Button>
+  <Button size="sm" variant={isGnomeSelected ? 'default' : 'outline'} onClick={() => setShowGnomeSubs(v => !v)}>Gnome</Button>
       {showGnomeSubs && (
         <>
-          {gnomeForest && <Button size="sm" variant={props.value.id === 'gnome-forest' ? 'default' : 'outline'} onClick={() => props.onChange(gnomeForest)} style={subBtnStyle(props.value.id === 'gnome-forest')}>Forest</Button>}
-          {gnomeRock && <Button size="sm" variant={props.value.id === 'gnome-rock' ? 'default' : 'outline'} onClick={() => props.onChange(gnomeRock)} style={subBtnStyle(props.value.id === 'gnome-rock')}>Rock</Button>}
-          {gnomeDeep && <Button size="sm" variant={props.value.id === 'gnome-deep' ? 'default' : 'outline'} onClick={() => props.onChange(gnomeDeep)} style={subBtnStyle(props.value.id === 'gnome-deep')}>Deep</Button>}
+          {gnomeForest && <Button size="sm" variant={curId === 'gnome-forest' ? 'default' : 'outline'} onClick={() => props.onChange(gnomeForest)} style={subBtnStyle(curId === 'gnome-forest')}>Forest</Button>}
+          {gnomeRock && <Button size="sm" variant={curId === 'gnome-rock' ? 'default' : 'outline'} onClick={() => props.onChange(gnomeRock)} style={subBtnStyle(curId === 'gnome-rock')}>Rock</Button>}
+          {gnomeDeep && <Button size="sm" variant={curId === 'gnome-deep' ? 'default' : 'outline'} onClick={() => props.onChange(gnomeDeep)} style={subBtnStyle(curId === 'gnome-deep')}>Deep</Button>}
         </>
       )}
 
       {/* Other races remain direct buttons */}
       {others.map(r => (
-        <Button key={r.id} size="sm" variant={props.value.id === r.id ? 'default' : 'outline'} onClick={() => props.onChange(r)}>{r.name}</Button>
+        <Button key={r.id} size="sm" variant={curId === r.id ? 'default' : 'outline'} onClick={() => props.onChange(r)}>{r.name}</Button>
+      ))}
+    </div>
+  )
+}
+
+function BackgroundSelector(props: { value?: Background; onChange: (v: Background | undefined) => void; allowNone?: boolean }) {
+  const curId = props.value?.id || ''
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+      {props.allowNone && (
+        <Button size="sm" variant={!props.value ? 'default' : 'outline'} onClick={() => props.onChange(undefined)}>None</Button>
+      )}
+      {BACKGROUNDS.map(bg => (
+        <Button key={bg.id} size="sm" variant={curId === bg.id ? 'default' : 'outline'} onClick={() => props.onChange(bg)}>{bg.name}</Button>
       ))}
     </div>
   )
