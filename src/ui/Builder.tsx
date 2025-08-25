@@ -131,6 +131,11 @@ function renderProgressionTable(classes: Array<{ klass: Klass; level: number; su
   const formatShared = (slots: number[]) => slots.map((n,i)=>`${i+1}:${n}`).join(' ') // e.g. "1:4 2:3 3:3 4:2"
 
   const hasBarbarian = rows.some(r => r.klass.id === 'barbarian')
+  const hasMonk = rows.some(r => r.klass.id === 'monk')
+  // Cumulative monk levels for Ki (Ki points = monk level, starts at 2nd level monk)
+  const cumulativeMonkLevels: number[] = []
+  let monkCount = 0
+  rows.forEach(r => { if (!r.future && r.klass.id === 'monk') monkCount += 1; cumulativeMonkLevels.push(monkCount) })
 
   return (
     <div style={{ overflowX: 'auto', maxHeight: fullscreen ? undefined : 360, overflowY: fullscreen ? undefined : 'auto', border: '1px solid var(--muted-border)', borderRadius: 8 }}>
@@ -143,6 +148,7 @@ function renderProgressionTable(classes: Array<{ klass: Klass; level: number; su
             <th style={progTh}>Prof Bonus</th>
             {hasBarbarian && <th style={progTh}>Rage Uses</th>}
             {hasBarbarian && <th style={progTh}>Rage Dmg</th>}
+            {hasMonk && <th style={progTh}>Ki</th>}
             <th style={progTh}>1st</th>
             <th style={progTh}>2nd</th>
             <th style={progTh}>3rd</th>
@@ -169,6 +175,7 @@ function renderProgressionTable(classes: Array<{ klass: Klass; level: number; su
                 <td style={progTd}>+{profBonus(r.charLevel)}</td>
                 {hasBarbarian && <td style={progTd}>{r.klass.id === 'barbarian' ? (rageByLevel[r.classLevel - 1] ?? '—') : '—'}</td>}
                 {hasBarbarian && <td style={progTd}>{r.klass.id === 'barbarian' ? `+${rageDmgByLevel[r.classLevel - 1] ?? 2}` : '—'}</td>}
+                {hasMonk && <td style={progTd}>{cumulativeMonkLevels[i] >= 2 ? cumulativeMonkLevels[i] : '—'}</td>}
                 {Array.from({ length: 9 }).map((_, si) => (
                   <td key={si} style={progTd}>{sharedSlots && sharedSlots[si] ? sharedSlots[si] : '—'}</td>
                 ))}
@@ -2209,11 +2216,24 @@ export function Builder(props: { onCharacterChange?: (state: AppState, derived?:
         const diff = buildDiff(mapping)
         setLastImportTsHandled(ts)
         if (diff.length === 0) {
-          // No changes; nothing to do.
           setPendingPassivePlan(null)
           return
         }
-        setPendingPassivePlan({ plan, diff, mapping, ts })
+        // Suppress popup if all diffs are pure resets back to '(none)' and not adding anything.
+        const meaningful = diff.filter(d => {
+          // If after is '(none)' and before was already '(none)', ignore (shouldn't be in diff though)
+          if (d.after === '(none)' && d.before && d.before !== '(none)') return false
+          // If after reduces classes to none
+            if (d.key === 'classes' && /\(none\)/i.test(d.after || '') && !/\(none\)/i.test(d.before || '')) return false
+          // Feats diff that results in none
+          if (d.key === 'feats' && /\(none\)/i.test(d.after || '') && !/\(none\)/i.test(d.before || '')) return false
+          return true
+        })
+        if (meaningful.length === 0) {
+          setPendingPassivePlan(null)
+          return
+        }
+        setPendingPassivePlan({ plan, diff: meaningful, mapping, ts })
         setSuppressPlanReconcile(false) // new incoming plan -> enable reconciliation again until user applies
         setImportedPlanSequence(mapping.chronological || [])
         if (debugPlanSync) console.log('[PlanSync] passive plan received', { diff, chronological: mapping.chronological.map((c:any)=>({id:c.klass.id,f:c.future})) })
